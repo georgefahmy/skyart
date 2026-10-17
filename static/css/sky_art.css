@@ -1,0 +1,365 @@
+/* ========================================================
+   Sky Art Generator & ForeFlight Exporter
+   Custom Styling
+   ======================================================== */
+
+.sky-art-container,
+.flight-art-container {
+    height: calc(100vh - 56px);
+    display: flex;
+    flex-direction: column;
+}
+
+@media (min-width: 992px) {
+    .sky-art-layout,
+    .flight-art-layout {
+        display: flex;
+        flex: 1;
+        overflow: hidden;
+    }
+    .sky-art-sidebar,
+    .flight-art-sidebar {
+        width: 440px;
+        min-width: 380px;
+        max-width: 480px;
+        height: 100%;
+        overflow-y: auto;
+        border-right: 1px solid rgba(0,0,0,0.1);
+        z-index: 1000;
+        background: #ffffff;
+    }
+    .sky-art-map-wrap,
+    .flight-art-map-wrap {
+        flex: 1;
+        height: 100%;
+        position: relative;
+    }
+}
+
+@media (max-width: 991.98px) {
+    .sky-art-container,
+    .flight-art-container {
+        height: auto;
+        min-height: calc(100vh - 56px);
+    }
+    .sky-art-layout,
+    .flight-art-layout {
+        display: flex;
+        flex-direction: column;
+    }
+    .sky-art-map-wrap,
+    .flight-art-map-wrap {
+        height: 480px;
+        position: relative;
+    }
+    .sky-art-sidebar,
+    .flight-art-sidebar {
+        width: 100%;
+        background: #ffffff;
+    }
+}
+
+/* Dark mode adjustments */
+body.dark-mode .sky-art-sidebar,
+body.dark-mode .flight-art-sidebar {
+    background: #18191a;
+    border-right-color: #333333;
+    color: #e0e0e0;
+}
+
+body.dark-mode .card {
+    background-color: #242526;
+    border-color: #38393a;
+}
+
+/* Map Canvas */
+#artMap {
+    width: 100%;
+    height: 100%;
+    background: #191a1a;
+}
+
+/* Seamless tile compositing and transitions for fractional zoom */
+#artMap .leaflet-tile {
+    will-change: transform, opacity;
+}
+#artMap .leaflet-tile-container {
+    will-change: transform;
+}
+
+/* Crosshair cursor when drawing mode is active */
+#artMap.drawing-active {
+    cursor: crosshair !important;
+}
+#artMap.drawing-active .leaflet-interactive {
+    cursor: crosshair !important;
+}
+
+/* Stats HUD */
+.art-stat-card {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 8px 12px;
+    text-align: center;
+}
+body.dark-mode .art-stat-card {
+    background: #2a2b2c;
+    border-color: #3e4042;
+}
+
+.art-stat-val {
+    font-size: 1.25rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: #0d6efd;
+}
+body.dark-mode .art-stat-val {
+    color: #6ea8fe;
+}
+
+.art-stat-lbl {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6c757d;
+}
+body.dark-mode .art-stat-lbl {
+    color: #a0a0a0;
+}
+
+/* Dropzone for files */
+.art-dropzone {
+    border: 2px dashed #0d6efd;
+    border-radius: 8px;
+    padding: 24px 16px;
+    text-align: center;
+    background: rgba(13, 110, 253, 0.04);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.art-dropzone:hover, .art-dropzone.dragover {
+    background: rgba(13, 110, 253, 0.12);
+    border-color: #0a58ca;
+}
+body.dark-mode .art-dropzone {
+    border-color: #6ea8fe;
+    background: rgba(110, 168, 254, 0.05);
+}
+body.dark-mode .art-dropzone:hover, body.dark-mode .art-dropzone.dragover {
+    background: rgba(110, 168, 254, 0.15);
+}
+
+/* Waypoint badges */
+.waypoint-badge-marker {
+    background-color: #0d6efd;
+    color: white;
+    font-size: 11px;
+    font-weight: bold;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid white;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    cursor: move;
+}
+.waypoint-badge-marker.first-pt {
+    background-color: #198754;
+}
+.waypoint-badge-marker.last-pt {
+    background-color: #dc3545;
+}
+
+/* Waypoint Midpoint Insert Markers */
+.waypoint-midpoint-marker {
+    background-color: #ffffff;
+    color: #0d6efd;
+    font-size: 12px;
+    font-weight: 700;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #0d6efd;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    cursor: pointer;
+    transition: transform 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+    opacity: 0.8;
+    user-select: none;
+    line-height: 1;
+}
+
+.waypoint-midpoint-marker:hover {
+    background-color: #0d6efd;
+    color: #ffffff;
+    transform: scale(1.4);
+    opacity: 1;
+    box-shadow: 0 2px 6px rgba(13, 110, 253, 0.5);
+    z-index: 1000;
+}
+
+body.dark-mode .waypoint-midpoint-marker,
+[data-bs-theme="dark"] .waypoint-midpoint-marker {
+    background-color: #1e293b;
+    color: #38bdf8;
+    border-color: #38bdf8;
+}
+
+body.dark-mode .waypoint-midpoint-marker:hover,
+[data-bs-theme="dark"] .waypoint-midpoint-marker:hover {
+    background-color: #38bdf8;
+    color: #0f172a;
+}
+
+.sky-art-route-line {
+    cursor: pointer !important;
+}
+
+
+/* ForeFlight button styling */
+.btn-foreflight {
+    background-color: #003366;
+    color: #ffffff;
+    border: none;
+    font-weight: 600;
+}
+.btn-foreflight:hover, .btn-foreflight:focus {
+    background-color: #002244;
+    color: #ffffff;
+}
+
+/* Range input display */
+.range-val-badge {
+    font-size: 0.8rem;
+    font-weight: 600;
+    min-width: 45px;
+    display: inline-block;
+    text-align: right;
+}
+
+/* Autocomplete airport list */
+.airport-autocomplete-list {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 1050;
+    max-height: 220px;
+    overflow-y: auto;
+    background: #ffffff;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+body.dark-mode .airport-autocomplete-list {
+    background: #242526;
+    border-color: #38393a;
+    color: #e0e0e0;
+}
+.airport-autocomplete-item {
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+.airport-autocomplete-item:hover {
+    background: #f0f7ff;
+}
+body.dark-mode .airport-autocomplete-item:hover {
+    background: #333940;
+}
+
+/* QR Code styling */
+#qrCodeContainer canvas, #qrCodeContainer img {
+    margin: 0 auto;
+    padding: 12px;
+    background: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+/* Floating Map Toolbar (Undo/Redo/Reverse) */
+.map-floating-toolbar {
+    position: absolute;
+    top: 10px;
+    left: 50px;
+    z-index: 1000;
+    display: flex;
+    gap: 6px;
+}
+.map-floating-toolbar .btn {
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.8rem;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    background: #ffffff;
+    color: #212529;
+}
+body.dark-mode .map-floating-toolbar .btn {
+    background: #242526;
+    color: #e0e0e0;
+    border-color: #444444;
+}
+.map-floating-toolbar .btn:disabled,
+.map-floating-toolbar .btn.disabled {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+.saved-drawing-row {
+    border-radius: 4px;
+    transition: background-color 0.15s ease-in-out;
+}
+.saved-drawing-row:hover {
+    background-color: rgba(13, 110, 253, 0.08);
+}
+body.dark-mode .saved-drawing-row:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Center pin anchor & Colocation hover styling */
+.center-pin-icon {
+    z-index: 2500 !important;
+}
+.center-pin-inner {
+    transition: transform 0.18s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.18s ease-in-out, background-color 0.18s ease-in-out;
+}
+.center-pin-icon:hover .center-pin-inner,
+.center-pin-icon.colocated-highlight .center-pin-inner {
+    transform: scale(1.28);
+    box-shadow: 0 0 16px rgba(255, 193, 7, 0.95), 0 4px 10px rgba(0,0,0,0.5) !important;
+    background: #ffca2c !important;
+    z-index: 3000 !important;
+}
+.dep-apt-icon.colocated-with-center,
+.arr-apt-icon.colocated-with-center {
+    transition: opacity 0.18s ease-in-out;
+}
+.dep-apt-icon.colocated-with-center:hover,
+.arr-apt-icon.colocated-with-center:hover {
+    opacity: 0.88;
+}
+
+/* Tabs & Save Single-line alignment */
+#artModeTabsHeader {
+    white-space: nowrap;
+    overflow: visible !important;
+    position: relative;
+    z-index: 1055 !important;
+}
+#artModeTabsHeader .nav-link {
+    white-space: nowrap;
+    font-size: 0.82rem;
+}
+#artModeTabsHeader .btn {
+    white-space: nowrap;
+}
+#tabPresetsDropdownMenu {
+    box-shadow: 0 0.5rem 1.2rem rgba(0, 0, 0, 0.25) !important;
+}

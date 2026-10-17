@@ -1,0 +1,15 @@
+[Unit]
+Description=SkyArt - GPS Flight Art & ForeFlight Flight Plan Generator
+After=network.target
+
+[Service]
+User=georgefahmy
+WorkingDirectory=/home/georgefahmy/Documents/sky_art
+Environment="PATH=/home/georgefahmy/.virtualenvs/tracker/bin:/usr/local/bin:/usr/bin"
+Environment="PORT=5005"
+ExecStart=/home/georgefahmy/.virtualenvs/tracker/bin/gunicorn --workers 2 --bind 0.0.0.0:5005 app:app
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

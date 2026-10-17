@@ -1,0 +1,370 @@
+#!/usr/bin/env python3
+"""
+SkyArt - GPS Flight Art & ForeFlight Flight Plan Generator
+Standalone server application.
+"""
+
+import json
+import logging
+import os
+import time
+from datetime import datetime, timezone
+
+from flask import Flask, jsonify, make_response, render_template, request
+from flask_sqlalchemy import SQLAlchemy
+
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
+os.makedirs(INSTANCE_DIR, exist_ok=True)
+
+app = Flask(__name__, instance_path=INSTANCE_DIR)
+app.secret_key = os.environ.get("SECRET_KEY", "skyart-standalone-secret-key-9281729482")
+app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
+
+db_path = os.path.join(app.instance_path, "sky_art.db")
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", f"sqlite:///{db_path}")
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+db = SQLAlchemy(app)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+
+class SkyArtDrawing(db.Model):
+    __tablename__ = "sky_art_drawings"
+
+    id = db.Column(db.String(100), primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    aspect_ratio = db.Column(db.Float, default=1.0)
+    size_nm = db.Column(db.Float, default=12.0)
+    height_nm = db.Column(db.Float, default=12.0)
+    lock_aspect = db.Column(db.Boolean, default=True)
+    route_reversed = db.Column(db.Boolean, default=False)
+    point_count = db.Column(db.Integer, default=0)
+    base_points_json = db.Column(db.Text, nullable=False)
+
+    def to_dict(self):
+        try:
+            pts = json.loads(self.base_points_json) if self.base_points_json else []
+        except Exception:
+            pts = []
+        return {
+            "id": self.id,
+            "name": self.name,
+            "createdAt": self.created_at.isoformat() if self.created_at else None,
+            "aspectRatio": self.aspect_ratio if self.aspect_ratio is not None else 1.0,
+            "sizeNM": self.size_nm if self.size_nm is not None else 12.0,
+            "heightNM": self.height_nm if self.height_nm is not None else 12.0,
+            "lockAspect": self.lock_aspect if self.lock_aspect is not None else True,
+            "routeReversed": bool(self.route_reversed),
+            "pointCount": self.point_count or len(pts),
+            "basePoints": pts,
+        }
+
+
+with app.app_context():
+    db.create_all()
+
+
+# --- Airport Search Service ---
+_airports_summary_cache = None
+
+
+def get_airports_summary_list():
+    global _airports_summary_cache
+    if _airports_summary_cache is None:
+        try:
+            path = os.path.join(BASE_DIR, "data", "airports_summary.json")
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        _airports_summary_cache = data.get("airports", [])
+                    elif isinstance(data, list):
+                        _airports_summary_cache = data
+                    else:
+                        _airports_summary_cache = []
+            else:
+                _airports_summary_cache = []
+        except Exception as e:
+            app.logger.error(f"Error loading airports_summary: {e}")
+            _airports_summary_cache = []
+    return _airports_summary_cache
+
+
+@app.route("/")
+@app.route("/sky_art")
+@app.route("/flight_art")
+def index():
+    return render_template("index.html")
+
+
+@app.route("/api/airports/search", methods=["GET"])
+def api_airports_search():
+    """Fast search for airports by ICAO/FAA code, name, or city."""
+    q = request.args.get("q", "").strip().upper()
+    if not q or len(q) < 2:
+        return jsonify([])
+    airports = get_airports_summary_list()
+    results = []
+    for ap in airports:
+        icao = (ap.get("icao") or "").upper()
+        faa = (ap.get("faa") or "").upper()
+        name = (ap.get("name") or "").upper()
+        city = (ap.get("city") or "").upper()
+        if (
+            q == icao
+            or q == faa
+            or icao.startswith(q)
+            or faa.startswith(q)
+            or q in name
+            or q in city
+        ):
+            results.append(
+                {
+                    "icao": ap.get("icao") or ap.get("faa"),
+                    "faa": ap.get("faa"),
+                    "name": ap.get("name"),
+                    "city": ap.get("city"),
+                    "state": ap.get("state"),
+                    "lat": ap.get("lat"),
+                    "lon": ap.get("lon"),
+                }
+            )
+            if len(results) >= 12:
+                break
+    return jsonify(results)
+
+
+@app.route("/api/sky_art/drawings", methods=["GET"])
+@app.route("/api/flight_art/drawings", methods=["GET"])
+def api_get_sky_art_drawings():
+    """Retrieve all saved Sky Art drawings."""
+    try:
+        drawings = SkyArtDrawing.query.order_by(SkyArtDrawing.created_at.desc()).all()
+        return jsonify([d.to_dict() for d in drawings])
+    except Exception as e:
+        app.logger.error(f"Error fetching sky art drawings: {e}")
+        return jsonify([]), 500
+
+
+@app.route("/api/sky_art/drawings", methods=["POST"])
+@app.route("/api/flight_art/drawings", methods=["POST"])
+def api_save_sky_art_drawing():
+    """Save or update a Sky Art drawing."""
+    try:
+        data = request.get_json(silent=True) or {}
+        name = (data.get("name") or "").strip()
+        if not name:
+            name = f"Drawing {datetime.now().strftime('%b %d, %H:%M')}"
+
+        drawing_id = data.get("id")
+        if not drawing_id:
+            drawing_id = f"art_{int(time.time() * 1000)}"
+
+        base_points = data.get("basePoints") or []
+        if not base_points or len(base_points) < 2:
+            return jsonify({"status": "error", "message": "At least 2 points required"}), 400
+
+        drawing = db.session.get(SkyArtDrawing, drawing_id)
+        if not drawing:
+            drawing = SkyArtDrawing(id=drawing_id)
+            db.session.add(drawing)
+
+        drawing.name = name
+        drawing.aspect_ratio = float(data.get("aspectRatio") or 1.0)
+        drawing.size_nm = float(data.get("sizeNM") or 12.0)
+        drawing.height_nm = float(data.get("heightNM") or 12.0)
+        drawing.lock_aspect = bool(data.get("lockAspect", True))
+        drawing.route_reversed = bool(data.get("routeReversed", False))
+        drawing.point_count = len(base_points)
+        drawing.base_points_json = json.dumps(base_points)
+
+        db.session.commit()
+        return jsonify({"status": "success", "drawing": drawing.to_dict()})
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error saving sky art drawing: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/sky_art/drawings/<drawing_id>", methods=["DELETE", "POST"])
+@app.route("/api/flight_art/drawings/<drawing_id>", methods=["DELETE", "POST"])
+def api_delete_sky_art_drawing(drawing_id):
+    """Delete a saved Sky Art drawing."""
+    try:
+        drawing = db.session.get(SkyArtDrawing, drawing_id)
+        if drawing:
+            db.session.delete(drawing)
+            db.session.commit()
+            return jsonify({"status": "success"})
+        return jsonify({"status": "not_found"}), 404
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error deleting sky art drawing {drawing_id}: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/sky_art/export_fpl", methods=["POST"])
+@app.route("/api/flight_art/export_fpl", methods=["POST"])
+def api_sky_art_export_fpl():
+    """Generates a downloadable ForeFlight/Garmin XML Flight Plan (.fpl)."""
+    try:
+        data = request.get_json(silent=True) or {}
+        waypoints = data.get("waypoints", [])
+        route_name = data.get("route_name", "SKY_ART")
+
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        xml_lines = [
+            '<?xml version="1.0" encoding="utf-8"?>',
+            '<flight-plan xmlns="http://www8.garmin.com/xmlschemas/FlightPlan/v1">',
+            f"  <created>{now_iso}</created>",
+            "  <waypoint-table>",
+        ]
+
+        for wp in waypoints:
+            w_id = wp.get("id", "WP")
+            w_type = wp.get("type", "USER WAYPOINT")
+            c_code = "US" if wp.get("isAirport") else ""
+            lat = f"{float(wp.get('lat', 0.0)):.6f}"
+            lon = f"{float(wp.get('lon', 0.0)):.6f}"
+            comment = wp.get("name", w_id)
+            xml_lines.extend(
+                [
+                    "    <waypoint>",
+                    f"      <identifier>{w_id}</identifier>",
+                    f"      <type>{w_type}</type>",
+                    f"      <country-code>{c_code}</country-code>",
+                    f"      <lat>{lat}</lat>",
+                    f"      <lon>{lon}</lon>",
+                    f"      <comment>{comment}</comment>",
+                    "    </waypoint>",
+                ]
+            )
+
+        xml_lines.extend(
+            [
+                "  </waypoint-table>",
+                "  <route>",
+                f"    <route-name>{route_name}</route-name>",
+                "    <flight-plan-index>1</flight-plan-index>",
+            ]
+        )
+
+        for wp in waypoints:
+            w_id = wp.get("id", "WP")
+            w_type = wp.get("type", "USER WAYPOINT")
+            xml_lines.extend(
+                [
+                    "    <route-point>",
+                    f"      <waypoint-identifier>{w_id}</waypoint-identifier>",
+                    f"      <waypoint-type>{w_type}</waypoint-type>",
+                ]
+            )
+            if wp.get("isAirport"):
+                xml_lines.append("      <country-code>US</country-code>")
+            xml_lines.append("    </route-point>")
+
+        xml_lines.extend(["  </route>", "</flight-plan>"])
+        xml_content = "\n".join(xml_lines)
+
+        resp = make_response(xml_content)
+        resp.headers["Content-Type"] = "application/xml"
+        resp.headers["Content-Disposition"] = f"attachment; filename={route_name}.fpl"
+        return resp
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/sky_art/export_gpx", methods=["POST"])
+@app.route("/api/flight_art/export_gpx", methods=["POST"])
+def api_sky_art_export_gpx():
+    """Generates a downloadable GPX flight plan."""
+    try:
+        data = request.get_json(silent=True) or {}
+        waypoints = data.get("waypoints", [])
+        route_name = data.get("route_name", "Sky Art")
+
+        xml_lines = [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            '<gpx version="1.1" creator="Sky Art Planner" xmlns="http://www.topografix.com/GPX/1/1">',
+            f"  <metadata><name>{route_name}</name></metadata>",
+            "  <rte>",
+            f"    <name>{route_name}</name>",
+        ]
+
+        for wp in waypoints:
+            lat = f"{float(wp.get('lat', 0.0)):.6f}"
+            lon = f"{float(wp.get('lon', 0.0)):.6f}"
+            w_id = wp.get("id", "WP")
+            w_name = wp.get("name", w_id)
+            xml_lines.extend(
+                [
+                    f'    <rtept lat="{lat}" lon="{lon}">',
+                    f"      <name>{w_id}</name>",
+                    f"      <desc>{w_name}</desc>",
+                    "    </rtept>",
+                ]
+            )
+
+        xml_lines.extend(["  </rte>", "</gpx>"])
+        xml_content = "\n".join(xml_lines)
+
+        resp = make_response(xml_content)
+        resp.headers["Content-Type"] = "application/gpx+xml"
+        resp.headers["Content-Disposition"] = f"attachment; filename={route_name}.gpx"
+        return resp
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/sky_art/export_kml", methods=["POST"])
+@app.route("/api/flight_art/export_kml", methods=["POST"])
+def api_sky_art_export_kml():
+    """Generates a downloadable KML flight plan path."""
+    try:
+        data = request.get_json(silent=True) or {}
+        waypoints = data.get("waypoints", [])
+        route_name = data.get("route_name", "Sky Art")
+
+        xml_lines = [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            '<kml xmlns="http://www.opengis.net/kml/2.2">',
+            "  <Document>",
+            f"    <name>{route_name}</name>",
+            "    <Placemark>",
+            f"      <name>{route_name} Path</name>",
+            "      <LineString>",
+            "        <tessellate>1</tessellate>",
+            "        <coordinates>",
+        ]
+
+        for wp in waypoints:
+            lat = f"{float(wp.get('lat', 0.0)):.6f}"
+            lon = f"{float(wp.get('lon', 0.0)):.6f}"
+            xml_lines.append(f"          {lon},{lat},0")
+
+        xml_lines.extend(
+            [
+                "        </coordinates>",
+                "      </LineString>",
+                "    </Placemark>",
+                "  </Document>",
+                "</kml>",
+            ]
+        )
+        xml_content = "\n".join(xml_lines)
+
+        resp = make_response(xml_content)
+        resp.headers["Content-Type"] = "application/vnd.google-earth.kml+xml"
+        resp.headers["Content-Disposition"] = f"attachment; filename={route_name}.kml"
+        return resp
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5005))
+    debug = os.environ.get("FLASK_DEBUG", "True").lower() in ("true", "1", "yes")
+    app.run(host="0.0.0.0", port=port, debug=debug)
