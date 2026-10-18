@@ -860,9 +860,28 @@
 
         HistoryManager.pushState();
 
-        ArtState.projectedPoints.splice(artIdx, 1);
+        const totalPts = ArtState.projectedPoints.length;
+        const isLoopClosed = totalPts >= 3 &&
+            Math.abs(ArtState.projectedPoints[0].lat - ArtState.projectedPoints[totalPts - 1].lat) < 0.0008 &&
+            Math.abs(ArtState.projectedPoints[0].lon - ArtState.projectedPoints[totalPts - 1].lon) < 0.0008;
+
+        if (isLoopClosed && artIdx === 0) {
+            // If deleting the start/closing vertex on a closed loop:
+            // Remove closing point, remove start point, and re-close at the new start if >= 3 pts
+            ArtState.projectedPoints.splice(totalPts - 1, 1);
+            ArtState.projectedPoints.splice(0, 1);
+            if (ArtState.projectedPoints.length >= 2) {
+                const newFirst = ArtState.projectedPoints[0];
+                ArtState.projectedPoints.push({ lat: newFirst.lat, lon: newFirst.lon });
+            }
+        } else {
+            ArtState.projectedPoints.splice(artIdx, 1);
+        }
+
         ArtState.rawProjectedPoints = ArtState.projectedPoints.map(p => ({ lat: p.lat, lon: p.lon }));
         ArtState.basePoints = ArtState.projectedPoints.map(p => unprojectPoint(p.lat, p.lon));
+        ArtState.baseContours = [ArtState.basePoints.slice()];
+        ArtState.rawProjectedContours = null;
 
         buildFullFlightPlan();
         renderRouteOnMap();
@@ -886,6 +905,8 @@
         ArtState.projectedPoints.splice(afterArtIdx + 1, 0, { lat: insertLat, lon: insertLon });
         ArtState.rawProjectedPoints = ArtState.projectedPoints.map(p => ({ lat: p.lat, lon: p.lon }));
         ArtState.basePoints = ArtState.projectedPoints.map(p => unprojectPoint(p.lat, p.lon));
+        ArtState.baseContours = [ArtState.basePoints.slice()];
+        ArtState.rawProjectedContours = null;
 
         buildFullFlightPlan();
         renderRouteOnMap();
@@ -928,7 +949,8 @@
             const distEnd = calculateDistanceNM(pFirst.lat, pFirst.lon, pLast.lat, pLast.lon);
             const isClosed = (
                 (Math.abs(pFirst.lat - pLast.lat) < 0.001 && Math.abs(pFirst.lon - pLast.lon) < 0.001) ||
-                distEnd <= closureTolNM
+                distEnd < 0.005 ||
+                (ArtState.sourceType === 'freehand' && distEnd <= closureTolNM)
             );
 
             if (isClosed) {
@@ -1309,10 +1331,26 @@
         }
 
         // Waypoint Markers
-        ArtState.projectedPoints.forEach((pt, idx) => {
+        const totalPts = ArtState.projectedPoints.length;
+        const isLoopClosed = totalPts >= 3 &&
+            Math.abs(ArtState.projectedPoints[0].lat - ArtState.projectedPoints[totalPts - 1].lat) < 0.0008 &&
+            Math.abs(ArtState.projectedPoints[0].lon - ArtState.projectedPoints[totalPts - 1].lon) < 0.0008;
+
+        // In a closed loop, the start and end points are the exact same physical vertex.
+        // We render unique vertices (omitting the duplicate overlapping marker for the closing point)
+        // so clicking/dragging the start/end vertex drags both smoothly without leaving an orphaned marker.
+        const ptsToRender = isLoopClosed ? ArtState.projectedPoints.slice(0, totalPts - 1) : ArtState.projectedPoints;
+
+        ptsToRender.forEach((pt, idx) => {
             const isFirst = idx === 0;
-            const isLast = idx === ArtState.projectedPoints.length - 1;
-            const markerClass = isFirst ? 'first-pt' : (isLast ? 'last-pt' : '');
+            const isLast = !isLoopClosed && (idx === totalPts - 1);
+            let markerClass = '';
+            if (isFirst) markerClass = 'first-pt';
+            else if (isLast) markerClass = 'last-pt';
+
+            const wpTooltipText = isLoopClosed && isFirst
+                ? `<strong>WP1 / WP${totalPts} (Start & Finish)</strong><br><span class="text-muted small">${pt.lat.toFixed(4)}°, ${pt.lon.toFixed(4)}°</span><br><span class="text-primary small" style="font-size:0.72rem;"><i class="bi bi-arrows-move me-1"></i>Drag to adjust corner</span><br><span class="text-danger small" style="font-size:0.72rem;"><i class="bi bi-trash3 me-1"></i>Right-click to delete</span>`
+                : `<strong>WP${idx + 1}</strong><br><span class="text-muted small">${pt.lat.toFixed(4)}°, ${pt.lon.toFixed(4)}°</span><br><span class="text-primary small" style="font-size:0.72rem;"><i class="bi bi-arrows-move me-1"></i>Drag to adjust</span><br><span class="text-danger small" style="font-size:0.72rem;"><i class="bi bi-trash3 me-1"></i>Right-click to delete</span>`;
 
             const icon = L.divIcon({
                 className: 'custom-wp-icon',
@@ -1326,7 +1364,7 @@
                 draggable: true
             }).addTo(ArtState.map);
 
-            marker.bindTooltip(`<strong>WP${idx + 1}</strong><br><span class="text-muted small">${pt.lat.toFixed(4)}°, ${pt.lon.toFixed(4)}°</span><br><span class="text-primary small" style="font-size:0.72rem;"><i class="bi bi-arrows-move me-1"></i>Drag to adjust</span><br><span class="text-danger small" style="font-size:0.72rem;"><i class="bi bi-trash3 me-1"></i>Right-click to delete</span>`, { direction: 'top' });
+            marker.bindTooltip(wpTooltipText, { direction: 'top' });
 
             // Right-click to delete waypoint
             marker.on('contextmenu', function (e) {
@@ -1346,18 +1384,10 @@
                 ArtState.projectedPoints[idx].lat = pos.lat;
                 ArtState.projectedPoints[idx].lon = pos.lng;
 
-                // If closed loop and dragging start/end point, update corresponding closing vertex
-                const totalPts = ArtState.projectedPoints.length;
-                if (totalPts >= 3) {
-                    const firstPt = ArtState.projectedPoints[0];
-                    const lastPt = ArtState.projectedPoints[totalPts - 1];
-                    if (isFirst) {
-                        lastPt.lat = pos.lat;
-                        lastPt.lon = pos.lng;
-                    } else if (isLast) {
-                        firstPt.lat = pos.lat;
-                        firstPt.lon = pos.lng;
-                    }
+                // If closed loop and dragging the start/end vertex, keep closing vertex synchronized
+                if (isLoopClosed && idx === 0) {
+                    ArtState.projectedPoints[totalPts - 1].lat = pos.lat;
+                    ArtState.projectedPoints[totalPts - 1].lon = pos.lng;
                 }
 
                 buildFullFlightPlan();
@@ -1367,15 +1397,16 @@
                 // Update polylines
                 const updatedLatLngs = ArtState.projectedPoints.map(p => [p.lat, p.lon]);
                 ArtState.routePolyline.setLatLngs(updatedLatLngs);
-                if (ArtState.transitPolylineDep) {
+                if (ArtState.transitPolylineDep && ArtState.projectedPoints.length > 0) {
                     ArtState.transitPolylineDep.setLatLngs([
                         [ArtState.depAirport.lat, ArtState.depAirport.lon],
                         [ArtState.projectedPoints[0].lat, ArtState.projectedPoints[0].lon]
                     ]);
                 }
-                if (ArtState.transitPolylineArr) {
+                if (ArtState.transitPolylineArr && ArtState.projectedPoints.length > 0) {
+                    const lastPt = ArtState.projectedPoints[ArtState.projectedPoints.length - 1];
                     ArtState.transitPolylineArr.setLatLngs([
-                        [ArtState.projectedPoints[totalPts - 1].lat, ArtState.projectedPoints[totalPts - 1].lon],
+                        [lastPt.lat, lastPt.lon],
                         [ArtState.arrAirport.lat, ArtState.arrAirport.lon]
                     ]);
                 }
@@ -1390,7 +1421,19 @@
                 ArtState.projectedPoints[idx].lon = pos.lng;
                 ArtState.basePoints[idx] = unprojectPoint(pos.lat, pos.lng);
                 ArtState.rawProjectedPoints[idx] = { lat: pos.lat, lon: pos.lng };
+
+                if (isLoopClosed && idx === 0) {
+                    ArtState.projectedPoints[totalPts - 1].lat = pos.lat;
+                    ArtState.projectedPoints[totalPts - 1].lon = pos.lng;
+                    ArtState.basePoints[totalPts - 1] = unprojectPoint(pos.lat, pos.lng);
+                    ArtState.rawProjectedPoints[totalPts - 1] = { lat: pos.lat, lon: pos.lng };
+                }
+
+                ArtState.baseContours = [ArtState.basePoints.slice()];
+                ArtState.rawProjectedContours = null;
                 updateMidpointMarkers();
+                renderWaypointTable();
+                updateStatsHUD();
             });
 
             ArtState.mapMarkers.push(marker);
@@ -2544,6 +2587,9 @@
 
         if (pts.length > 0) {
             normalizeAndSetBasePoints(pts, true, [pts]);
+        }
+    }
+
     // --- Saved Custom Drawings / Presets Management ---
     const SAVED_DRAWINGS_STORAGE_KEY = 'sky_art_saved_drawings';
     const LEGACY_SAVED_DRAWINGS_STORAGE_KEY = 'flight_art_saved_drawings';
@@ -4270,7 +4316,10 @@
     window.HistoryManager = HistoryManager;
     window.syncDimensionInputs = syncDimensionInputs;
     window.traceRasterImage = traceRasterImage;
-    window.tracePngImage = tracePngImage;
+    window.loadPreset = loadPreset;
+    window.deleteWaypoint = deleteWaypoint;
+    window.insertWaypoint = insertWaypoint;
+    window.applyTransformations = applyTransformations;
     window.handleUploadedFile = handleUploadedFile;
 
 })();

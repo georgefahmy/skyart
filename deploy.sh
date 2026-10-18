@@ -9,6 +9,7 @@ REMOTE_DIR="/home/georgefahmy/Documents/sky_art"
 
 echo "🧪 [1/4] Running local verification tests..."
 node tests/test_zoom_pan_sync.js
+node tests/test_waypoint_manipulation.js
 ./venv/bin/python3 -m unittest discover tests
 
 echo "🚀 [2/4] Pushing latest local commits to GitHub..."
