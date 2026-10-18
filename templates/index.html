@@ -79,11 +79,40 @@
         <!-- Sidebar Panel: Tools, Settings, Performance, Exports -->
         <div class="flight-art-sidebar p-3 d-flex flex-column gap-3">
 
-            <!-- Search & Quick Center -->
+            <!-- Search & Home Airport Controls -->
             <div class="position-relative">
-                <label class="form-label small fw-bold text-uppercase text-muted mb-1">
-                    <i class="bi bi-geo-alt-fill text-danger me-1"></i> Airport / Location Search
-                </label>
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <label class="form-label small fw-bold text-uppercase text-muted mb-0">
+                        <i class="bi bi-geo-alt-fill text-danger me-1"></i> Airport Search
+                    </label>
+                    <div class="dropdown">
+                        <button class="btn btn-outline-primary btn-sm py-0 px-2 dropdown-toggle d-flex align-items-center gap-1" type="button" id="topHomeAirportBtn" data-bs-toggle="dropdown" aria-expanded="false" title="Your configured Home Airport">
+                            <i class="bi bi-house-door-fill text-primary"></i>
+                            <span class="small fw-bold" id="topHomeAirportBadge">E16</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow-sm p-2" aria-labelledby="topHomeAirportBtn" style="min-width: 230px; font-size: 0.82rem;">
+                            <li class="px-2 py-1">
+                                <div class="text-uppercase text-muted fw-bold" style="font-size: 0.68rem; letter-spacing: 0.5px;">Current Home Base</div>
+                                <div class="fw-bold fs-6 text-primary mt-1" id="topHomeDropdownIcao">E16</div>
+                                <div class="text-truncate fw-semibold text-secondary" id="topHomeDropdownName" style="max-width: 200px;">San Martin Airport</div>
+                                <div class="text-muted font-monospace small" id="topHomeDropdownCoords">37.0816°, -121.5970°</div>
+                            </li>
+                            <li><hr class="dropdown-divider my-2"></li>
+                            <li>
+                                <button class="dropdown-item py-1 px-2 rounded d-flex align-items-center gap-2" type="button" id="jumpToHomeBtn">
+                                    <i class="bi bi-crosshair2 text-danger"></i>
+                                    <span>Center Map on Home</span>
+                                </button>
+                            </li>
+                            <li>
+                                <button class="dropdown-item py-1 px-2 rounded d-flex align-items-center gap-2" type="button" id="openChangeHomeModalBtn" data-bs-toggle="modal" data-bs-target="#configHomeAirportModal">
+                                    <i class="bi bi-gear-fill text-secondary"></i>
+                                    <span>Change Home Airport...</span>
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
                 <div class="input-group input-group-sm">
                     <input type="text" id="airportSearchInput" class="form-control" placeholder="Search ICAO, name, or city" autocomplete="off">
                     <button class="btn btn-outline-secondary" type="button" id="centerToMapBtn" title="Set anchor to current map center">
@@ -355,13 +384,8 @@
             <!-- Routing & Airport Options -->
             <div class="card border shadow-sm">
                 <div class="card-header bg-light py-2 px-3 fw-bold small text-uppercase text-muted d-flex justify-content-between align-items-center" id="airportCardHeader" role="button" aria-expanded="true" aria-controls="airportControlsCollapse">
-                    <span><i class="bi bi-airplane-engines me-1"></i> Airport</span>
-                    <div class="d-flex align-items-center gap-2">
-                        <button class="btn btn-link btn-sm p-0 text-decoration-none small" type="button" id="configHomeAirportBtn" data-bs-toggle="modal" data-bs-target="#configHomeAirportModal" title="Configure Default Home Airport">
-                            <i class="bi bi-house-gear-fill me-1"></i><span id="homeAirportHeaderBadge">Home: E16</span>
-                        </button>
-                        <i class="bi bi-chevron-up collapse-icon"></i>
-                    </div>
+                    <span><i class="bi bi-airplane-engines me-1"></i> Airport &amp; Transit</span>
+                    <i class="bi bi-chevron-up collapse-icon"></i>
                 </div>
                 <div class="collapse show" id="airportControlsCollapse">
                     <div class="card-body p-3">
@@ -369,7 +393,7 @@
                             <div class="form-check form-switch">
                                 <input class="form-check-input" type="checkbox" id="includeAirportCheck" checked>
                                 <label class="form-check-label small fw-bold" for="includeAirportCheck" id="connectHomeAirportLabel">
-                                    Connect to Home Airport ( E16 )
+                                    Include Airport Transit Legs ( Departure &amp; Arrival )
                                 </label>
                             </div>
                             <div class="d-flex justify-content-between align-items-center">
@@ -388,12 +412,7 @@
                         <div class="row g-2 mb-2">
                             <!-- Departure Airport Input -->
                             <div class="col-6 position-relative">
-                                <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <label class="form-label small text-muted mb-0 fw-bold">Departure:</label>
-                                    <button class="btn btn-link btn-sm p-0 text-decoration-none" type="button" id="setDepAsHomeBtn" title="Set this departure airport as default Home Airport" style="font-size: 0.72rem;">
-                                        <i class="bi bi-star"></i> Set Home
-                                    </button>
-                                </div>
+                                <label class="form-label small text-muted mb-1 fw-bold">Departure:</label>
                                 <input type="text" id="depAirportInput" class="form-control form-control-sm text-uppercase fw-bold text-success" value="E16" placeholder="ICAO (e.g. E16)" autocomplete="off">
                                 <div id="depAirportSearchResults" class="airport-autocomplete-list d-none"></div>
                                 <div id="depAirportName" class="text-muted text-truncate mt-1" style="font-size: 0.7rem;">San Martin Airport</div>

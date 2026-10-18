@@ -116,6 +116,27 @@ class SkyArtDrawing(db.Model):
         }
 
 
+class SkyArtHomeAirport(db.Model):
+    __tablename__ = "sky_art_home_airports"
+
+    user_id = db.Column(db.String(100), primary_key=True)
+    icao = db.Column(db.String(20), nullable=False)
+    name = db.Column(db.String(150), nullable=False)
+    lat = db.Column(db.Float, nullable=False)
+    lon = db.Column(db.Float, nullable=False)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self):
+        return {
+            "icao": self.icao,
+            "faa": self.icao,
+            "name": self.name,
+            "lat": self.lat,
+            "lon": self.lon,
+            "updatedAt": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 with app.app_context():
     db.create_all()
     try:
@@ -286,6 +307,70 @@ def api_delete_sky_art_drawing(drawing_id):
     except Exception as e:
         db.session.rollback()
         app.logger.error(f"Error deleting sky art drawing {drawing_id}: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/sky_art/home_airport", methods=["GET"])
+@app.route("/api/flight_art/home_airport", methods=["GET"])
+def api_get_home_airport():
+    """Retrieve the configured Home Airport for the current user instance."""
+    try:
+        uid = getattr(request, "_skyart_user_id", None)
+        if not uid:
+            return jsonify({"status": "not_found", "airport": None})
+        record = db.session.get(SkyArtHomeAirport, uid)
+        if record:
+            return jsonify({"status": "success", "airport": record.to_dict()})
+        return jsonify({"status": "not_found", "airport": None})
+    except Exception as e:
+        app.logger.error(f"Error fetching home airport: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/sky_art/home_airport", methods=["POST"])
+@app.route("/api/flight_art/home_airport", methods=["POST"])
+def api_save_home_airport():
+    """Save or update the configured Home Airport for the current user instance."""
+    try:
+        uid = getattr(request, "_skyart_user_id", None)
+        if not uid:
+            return jsonify({"status": "error", "message": "Missing user instance"}), 400
+
+        data = request.get_json(silent=True) or {}
+        icao = (data.get("icao") or data.get("faa") or "").strip().upper()
+        name = (data.get("name") or icao).strip()
+        lat = data.get("lat")
+        lon = data.get("lon")
+
+        if not icao or lat is None or lon is None:
+            return jsonify({"status": "error", "message": "Missing required airport fields"}), 400
+
+        lat = float(lat)
+        lon = float(lon)
+
+        record = db.session.get(SkyArtHomeAirport, uid)
+        if record:
+            record.icao = icao
+            record.name = name
+            record.lat = lat
+            record.lon = lon
+            record.updated_at = datetime.now(timezone.utc)
+        else:
+            record = SkyArtHomeAirport(
+                user_id=uid,
+                icao=icao,
+                name=name,
+                lat=lat,
+                lon=lon,
+                updated_at=datetime.now(timezone.utc),
+            )
+            db.session.add(record)
+
+        db.session.commit()
+        return jsonify({"status": "success", "airport": record.to_dict()})
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error saving home airport: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 

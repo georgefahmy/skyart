@@ -7,6 +7,36 @@
 (function () {
     'use strict';
 
+    // --- User Instance Identification ---
+    const USER_ID_STORAGE_KEY = 'sky_art_user_instance_id';
+
+    function getUserInstanceId() {
+        let uid = null;
+        try {
+            uid = localStorage.getItem(USER_ID_STORAGE_KEY);
+        } catch (e) {}
+
+        if (!uid) {
+            const match = document.cookie.match(/(?:^|;\s*)skyart_uid=([^;]+)/);
+            if (match && match[1]) {
+                uid = decodeURIComponent(match[1]);
+            } else {
+                uid = 'usr_' + (window.crypto && crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : (Date.now().toString(36) + Math.random().toString(36).substring(2)));
+            }
+            try {
+                localStorage.setItem(USER_ID_STORAGE_KEY, uid);
+            } catch (e) {}
+        }
+        return uid;
+    }
+
+    function getApiHeaders(extra = {}) {
+        return {
+            'X-User-ID': getUserInstanceId(),
+            ...extra
+        };
+    }
+
     // Default Home Airport: E16 (San Martin Airport, CA)
     const DEFAULT_HOME_AIRPORT = {
         icao: 'E16',
@@ -19,9 +49,22 @@
     const HOME_AIRPORT_STORAGE_KEY = 'sky_art_home_airport';
     const LEGACY_HOME_AIRPORT_STORAGE_KEY = 'flight_art_home_airport';
 
+    function getUserHomeAirportStorageKey() {
+        return HOME_AIRPORT_STORAGE_KEY + '_' + getUserInstanceId();
+    }
+
     function loadConfiguredHomeAirport() {
         try {
-            const saved = localStorage.getItem(HOME_AIRPORT_STORAGE_KEY) || localStorage.getItem(LEGACY_HOME_AIRPORT_STORAGE_KEY);
+            const userKey = getUserHomeAirportStorageKey();
+            let saved = localStorage.getItem(userKey);
+            if (!saved) {
+                saved = localStorage.getItem(HOME_AIRPORT_STORAGE_KEY) || localStorage.getItem(LEGACY_HOME_AIRPORT_STORAGE_KEY);
+                if (saved) {
+                    try {
+                        localStorage.setItem(userKey, saved);
+                    } catch (e) {}
+                }
+            }
             if (saved) {
                 const parsed = JSON.parse(saved);
                 if (parsed && (parsed.icao || parsed.faa) && !isNaN(parsed.lat) && !isNaN(parsed.lon)) {
@@ -34,15 +77,62 @@
         return { ...DEFAULT_HOME_AIRPORT };
     }
 
-    function saveConfiguredHomeAirport(airportObj) {
+    function saveConfiguredHomeAirport(airportObj, skipServerSync = false) {
         if (!airportObj) return;
         try {
-            localStorage.setItem(HOME_AIRPORT_STORAGE_KEY, JSON.stringify(airportObj));
+            localStorage.setItem(getUserHomeAirportStorageKey(), JSON.stringify(airportObj));
         } catch (e) {
             console.error("Error saving home airport to localStorage:", e);
         }
         ArtState.homeAirport = airportObj;
         updateHomeAirportUI();
+
+        if (!skipServerSync) {
+            fetch('/api/sky_art/home_airport', {
+                method: 'POST',
+                headers: getApiHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({
+                    icao: airportObj.icao || airportObj.faa,
+                    name: airportObj.name,
+                    lat: airportObj.lat,
+                    lon: airportObj.lon
+                })
+            }).catch(e => {
+                console.warn("Error syncing home airport with server:", e);
+            });
+        }
+    }
+
+    async function syncHomeAirportWithServer() {
+        try {
+            const res = await fetch('/api/sky_art/home_airport', {
+                headers: getApiHeaders()
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data && data.status === 'success' && data.airport) {
+                    const serverAp = data.airport;
+                    saveConfiguredHomeAirport(serverAp, true);
+                    return;
+                }
+            }
+            // If server doesn't have it yet, but user has customized local storage, push to server
+            const localHome = loadConfiguredHomeAirport();
+            if (localHome && (localHome.icao !== DEFAULT_HOME_AIRPORT.icao || localHome.lat !== DEFAULT_HOME_AIRPORT.lat)) {
+                fetch('/api/sky_art/home_airport', {
+                    method: 'POST',
+                    headers: getApiHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify({
+                        icao: localHome.icao || localHome.faa,
+                        name: localHome.name,
+                        lat: localHome.lat,
+                        lon: localHome.lon
+                    })
+                }).catch(e => console.warn("Background home airport upload error:", e));
+            }
+        } catch (err) {
+            console.warn("Could not sync home airport with server (using local cache):", err);
+        }
     }
 
     const initialHome = loadConfiguredHomeAirport();
@@ -634,17 +724,34 @@
 
     function updateHomeAirportUI() {
         const home = ArtState.homeAirport || DEFAULT_HOME_AIRPORT;
+        const icao = home.icao || home.faa || 'E16';
+        const name = home.name || icao;
+        const coords = `${Number(home.lat).toFixed(4)}°, ${Number(home.lon).toFixed(4)}°`;
+
+        // Top Search Home Airport elements
+        const topBadge = document.getElementById('topHomeAirportBadge');
+        const topIcao = document.getElementById('topHomeDropdownIcao');
+        const topName = document.getElementById('topHomeDropdownName');
+        const topCoords = document.getElementById('topHomeDropdownCoords');
+
+        if (topBadge) topBadge.innerText = icao;
+        if (topIcao) topIcao.innerText = icao;
+        if (topName) topName.innerText = name;
+        if (topCoords) topCoords.innerText = coords;
+
+        // Lower airport card elements
         const label = document.getElementById('connectHomeAirportLabel');
         const badge = document.getElementById('homeAirportHeaderBadge');
+        if (label) label.innerText = `Include Airport Transit Legs ( Departure & Arrival )`;
+        if (badge) badge.innerText = `Home: ${icao}`;
+
+        // Modal elements
         const modalBadge = document.getElementById('configHomeCurrentBadge');
         const modalName = document.getElementById('configHomeCurrentName');
         const modalCoords = document.getElementById('configHomeCurrentCoords');
-
-        if (label) label.innerText = `Connect to Home Airport ( ${home.icao} )`;
-        if (badge) badge.innerText = `Home: ${home.icao}`;
-        if (modalBadge) modalBadge.innerText = home.icao;
-        if (modalName) modalName.innerText = home.name;
-        if (modalCoords) modalCoords.innerText = `${home.lat.toFixed(4)}°, ${home.lon.toFixed(4)}°`;
+        if (modalBadge) modalBadge.innerText = icao;
+        if (modalName) modalName.innerText = name;
+        if (modalCoords) modalCoords.innerText = coords;
 
         const depInput = document.getElementById('depAirportInput');
         const depName = document.getElementById('depAirportName');
@@ -2437,39 +2544,6 @@
 
         if (pts.length > 0) {
             normalizeAndSetBasePoints(pts, true, [pts]);
-        }
-    }
-
-    // --- User Instance Identification ---
-    const USER_ID_STORAGE_KEY = 'sky_art_user_instance_id';
-
-    function getUserInstanceId() {
-        let uid = null;
-        try {
-            uid = localStorage.getItem(USER_ID_STORAGE_KEY);
-        } catch (e) {}
-
-        if (!uid) {
-            const match = document.cookie.match(/(?:^|;\s*)skyart_uid=([^;]+)/);
-            if (match && match[1]) {
-                uid = decodeURIComponent(match[1]);
-            } else {
-                uid = 'usr_' + (window.crypto && crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : (Date.now().toString(36) + Math.random().toString(36).substring(2)));
-            }
-            try {
-                localStorage.setItem(USER_ID_STORAGE_KEY, uid);
-            } catch (e) {}
-        }
-        return uid;
-    }
-
-    function getApiHeaders(extra = {}) {
-        return {
-            'X-User-ID': getUserInstanceId(),
-            ...extra
-        };
-    }
-
     // --- Saved Custom Drawings / Presets Management ---
     const SAVED_DRAWINGS_STORAGE_KEY = 'sky_art_saved_drawings';
     const LEGACY_SAVED_DRAWINGS_STORAGE_KEY = 'flight_art_saved_drawings';
@@ -3400,8 +3474,14 @@
 
                         let html = '';
                         data.forEach(ap => {
-                            html += `<div class="airport-autocomplete-item" data-lat="${ap.lat}" data-lon="${ap.lon}" data-icao="${ap.icao || ap.faa}" data-name="${ap.name}">
-                                <strong>${ap.icao || ap.faa}</strong> - ${ap.name} <span class="text-muted small">(${ap.city || ''}, ${ap.state || ''})</span>
+                            const icao = ap.icao || ap.faa;
+                            html += `<div class="airport-autocomplete-item d-flex align-items-center justify-content-between py-1 px-2" data-lat="${ap.lat}" data-lon="${ap.lon}" data-icao="${icao}" data-name="${ap.name}">
+                                <div class="text-truncate flex-grow-1 pe-2" title="${icao} - ${ap.name}">
+                                    <strong>${icao}</strong> - ${ap.name} <span class="text-muted small">(${ap.city || ''}, ${ap.state || ''})</span>
+                                </div>
+                                <button class="btn btn-outline-primary btn-sm py-0 px-2 set-search-item-home-btn text-nowrap" type="button" title="Set ${icao} as default Home Airport" style="font-size: 0.68rem;">
+                                    <i class="bi bi-house-door-fill me-1"></i>Set Home
+                                </button>
                             </div>`;
                         });
                         listEl.innerHTML = html;
@@ -3411,6 +3491,7 @@
             });
 
             listEl.addEventListener('click', function (e) {
+                const homeBtn = e.target.closest('.set-search-item-home-btn');
                 const item = e.target.closest('.airport-autocomplete-item');
                 if (!item) return;
 
@@ -3418,33 +3499,47 @@
                 const lon = parseFloat(item.getAttribute('data-lon'));
                 const icao = item.getAttribute('data-icao');
                 const name = item.getAttribute('data-name');
+                if (isNaN(lat) || isNaN(lon)) return;
 
-                if (!isNaN(lat) && !isNaN(lon)) {
-                    // Set as new center
-                    ArtState.center.lat = lat;
-                    ArtState.center.lon = lon;
-                    updateCenterInputs();
-                    if (ArtState.centerMarker) {
-                        ArtState.centerMarker.setLatLng([lat, lon]);
-                    }
-                    ArtState.map.setView([lat, lon], 11);
-
-                    // Update departure & arrival airport
-                    ArtState.depAirport = { icao, name, lat, lon };
-                    ArtState.arrAirport = { icao, name, lat, lon };
-
-                    const depInput = document.getElementById('depAirportInput');
-                    const arrInput = document.getElementById('arrAirportInput');
-                    const depName = document.getElementById('depAirportName');
-                    const arrName = document.getElementById('arrAirportName');
-
-                    if (depInput) depInput.value = icao;
-                    if (arrInput) arrInput.value = icao;
-                    if (depName) depName.innerText = name;
-                    if (arrName) arrName.innerText = name;
-
-                    applyTransformations();
+                if (homeBtn) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    saveConfiguredHomeAirport({ icao, name, lat, lon });
+                    homeBtn.innerHTML = '<i class="bi bi-check-lg text-success me-1"></i>Saved!';
+                    homeBtn.classList.remove('btn-outline-primary');
+                    homeBtn.classList.add('btn-success', 'text-white');
+                    setTimeout(() => {
+                        homeBtn.innerHTML = '<i class="bi bi-house-door-fill me-1"></i>Set Home';
+                        homeBtn.classList.remove('btn-success', 'text-white');
+                        homeBtn.classList.add('btn-outline-primary');
+                    }, 2000);
+                    return;
                 }
+
+                // Set as new center
+                ArtState.center.lat = lat;
+                ArtState.center.lon = lon;
+                updateCenterInputs();
+                if (ArtState.centerMarker) {
+                    ArtState.centerMarker.setLatLng([lat, lon]);
+                }
+                ArtState.map.setView([lat, lon], 11);
+
+                // Update departure & arrival airport
+                ArtState.depAirport = { icao, name, lat, lon };
+                ArtState.arrAirport = { icao, name, lat, lon };
+
+                const depInput = document.getElementById('depAirportInput');
+                const arrInput = document.getElementById('arrAirportInput');
+                const depName = document.getElementById('depAirportName');
+                const arrName = document.getElementById('arrAirportName');
+
+                if (depInput) depInput.value = icao;
+                if (arrInput) arrInput.value = icao;
+                if (depName) depName.innerText = name;
+                if (arrName) arrName.innerText = name;
+
+                applyTransformations();
 
                 listEl.classList.add('d-none');
                 searchInput.value = `${icao} - ${name}`;
@@ -3457,6 +3552,34 @@
             });
         }
 
+        // Jump to Home Airport Button
+        document.getElementById('jumpToHomeBtn')?.addEventListener('click', () => {
+            const home = ArtState.homeAirport || DEFAULT_HOME_AIRPORT;
+            if (home && !isNaN(home.lat) && !isNaN(home.lon)) {
+                ArtState.center.lat = home.lat;
+                ArtState.center.lon = home.lon;
+                updateCenterInputs();
+                if (ArtState.centerMarker) {
+                    ArtState.centerMarker.setLatLng([home.lat, home.lon]);
+                }
+                ArtState.map.setView([home.lat, home.lon], 11);
+
+                // Update departure and arrival
+                ArtState.depAirport = { ...home };
+                ArtState.arrAirport = { ...home };
+                const depInput = document.getElementById('depAirportInput');
+                const arrInput = document.getElementById('arrAirportInput');
+                const depName = document.getElementById('depAirportName');
+                const arrName = document.getElementById('arrAirportName');
+                if (depInput) depInput.value = home.icao;
+                if (arrInput) arrInput.value = home.icao;
+                if (depName) depName.innerText = home.name;
+                if (arrName) arrName.innerText = home.name;
+
+                applyTransformations();
+            }
+        });
+
         // Editable Departure & Arrival Airport Inputs
         setupSingleAirportInput('depAirportInput', 'depAirportSearchResults', 'depAirportName', (airport) => {
             ArtState.depAirport = airport;
@@ -3466,17 +3589,6 @@
         setupSingleAirportInput('arrAirportInput', 'arrAirportSearchResults', 'arrAirportName', (airport) => {
             ArtState.arrAirport = airport;
             simplifyProjectedRoute();
-        });
-
-        // "Set Home" Button on Departure Input
-        document.getElementById('setDepAsHomeBtn')?.addEventListener('click', () => {
-            if (ArtState.depAirport) {
-                saveConfiguredHomeAirport(ArtState.depAirport);
-                const btn = document.getElementById('setDepAsHomeBtn');
-                const orig = btn.innerHTML;
-                btn.innerHTML = '<i class="bi bi-star-fill text-warning"></i> Saved!';
-                setTimeout(() => { btn.innerHTML = orig; }, 2000);
-            }
         });
 
         // "Round Trip" Button (Sync Arrival to Departure)
@@ -3499,10 +3611,20 @@
         const airportCardHeader = document.getElementById('airportCardHeader');
         const airportCollapseEl = document.getElementById('airportControlsCollapse');
 
+        // Reset modal state on show
+        document.getElementById('configHomeAirportModal')?.addEventListener('show.bs.modal', () => {
+            modalSelectedHome = { ...(ArtState.homeAirport || DEFAULT_HOME_AIRPORT) };
+            if (modalInput) modalInput.value = '';
+            if (modalList) {
+                modalList.innerHTML = '';
+                modalList.classList.add('d-none');
+            }
+            updateHomeAirportUI();
+        });
+
         if (airportCardHeader && airportCollapseEl) {
             airportCardHeader.addEventListener('click', function (e) {
-                // If user clicked the Home edit button, its icon, or badge, NEVER toggle collapse
-                if (e.target.closest('#configHomeAirportBtn') || e.target.closest('.btn')) {
+                if (e.target.closest('.btn')) {
                     return;
                 }
                 if (typeof bootstrap !== 'undefined') {
@@ -4127,6 +4249,7 @@
         syncDimensionInputs();
         renderSavedDrawingsDropdown();
         syncSavedDrawingsWithServer();
+        syncHomeAirportWithServer();
         HistoryManager.updateButtons();
     });
 
@@ -4136,6 +4259,7 @@
     window.DEFAULT_HOME_AIRPORT = DEFAULT_HOME_AIRPORT;
     window.loadConfiguredHomeAirport = loadConfiguredHomeAirport;
     window.saveConfiguredHomeAirport = saveConfiguredHomeAirport;
+    window.syncHomeAirportWithServer = syncHomeAirportWithServer;
     window.generateForeFlightRouteString = generateForeFlightRouteString;
     window.generateGarminFplXml = generateGarminFplXml;
     window.generateForeFlightMobileUrl = generateForeFlightMobileUrl;
