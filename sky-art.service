@@ -3,7 +3,6 @@ Description=SkyArt - GPS Flight Art & ForeFlight Flight Plan Generator
 After=network.target
 
 [Service]
-User=georgefahmy
 WorkingDirectory=/home/georgefahmy/Documents/sky_art
 Environment="PATH=/home/georgefahmy/Documents/sky_art/venv/bin:/usr/local/bin:/usr/bin"
 Environment="PORT=5005"
