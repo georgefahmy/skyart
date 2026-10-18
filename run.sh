@@ -3,7 +3,9 @@
 cd "$(dirname "$0")"
 
 PORT="${PORT:-5005}"
-echo "🎨 Starting SkyArt Standalone Server on http://0.0.0.0:${PORT} ..."
+echo "🎨 Starting SkyArt Local Development Server on http://localhost:${PORT} ..."
+echo "   (Open in your browser: http://127.0.0.1:${PORT})"
+echo ""
 
 if [ -f "./venv/bin/python3" ]; then
     PYTHON="./venv/bin/python3"

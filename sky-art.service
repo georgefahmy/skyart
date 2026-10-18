@@ -7,7 +7,7 @@ User=georgefahmy
 WorkingDirectory=/home/georgefahmy/Documents/sky_art
 Environment="PATH=/home/georgefahmy/Documents/sky_art/venv/bin:/usr/local/bin:/usr/bin"
 Environment="PORT=5005"
-ExecStart=/home/georgefahmy/Documents/sky_art/venv/bin/gunicorn --workers 2 --bind 0.0.0.0:5005 app:app
+ExecStart=/home/georgefahmy/Documents/sky_art/venv/bin/gunicorn --workers 2 --bind 127.0.0.1:5005 app:app
 Restart=always
 RestartSec=5
 
