@@ -2546,7 +2546,7 @@
     }
 
     const BUILTIN_PRESETS = [
-        { id: 'rv7', name: "Van's RV-7 (N890GF)", icon: '✈️', badge: '55 pts', desc: "Van's RV-7 top silhouette" },
+        { id: 'rv7', name: "Van's RV-7", icon: '✈️', badge: '55 pts', desc: "Van's RV-7 top silhouette" },
         { id: 'airplane', name: 'Jet Silhouette', icon: '✈️', badge: '19 pts', desc: 'Low-poly cartoon jet' },
         { id: 'heart', name: 'Heart', icon: '❤️', badge: '79 pts', desc: 'Classic parametric heart' },
         { id: 'star', name: '5-Point Star', icon: '⭐', badge: '11 pts', desc: 'Geometric 5-point star' },
