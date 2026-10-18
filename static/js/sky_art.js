@@ -2972,7 +2972,7 @@
 
     function generateGarminFplXml() {
         const nowIso = new Date().toISOString();
-        const routeName = 'N890GF_ART';
+        const routeName = 'SKY_ART';
 
         let xml = `<?xml version="1.0" encoding="utf-8"?>\n`;
         xml += `<flight-plan xmlns="http://www8.garmin.com/xmlschemas/FlightPlan/v1">\n`;
@@ -3012,9 +3012,9 @@
     }
 
     function generateGpxXml() {
-        const routeName = 'N890GF Sky Art';
+        const routeName = 'SkyArt Flight Plan';
         let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
-        xml += `<gpx version="1.1" creator="N890GF Sky Art Planner" xmlns="http://www.topografix.com/GPX/1/1">\n`;
+        xml += `<gpx version="1.1" creator="SkyArt Flight Art Studio" xmlns="http://www.topografix.com/GPX/1/1">\n`;
         xml += `  <metadata><name>${routeName}</name></metadata>\n`;
         xml += `  <rte>\n`;
         xml += `    <name>${routeName}</name>\n`;
@@ -3032,7 +3032,7 @@
     }
 
     function generateKmlXml() {
-        const routeName = 'N890GF Sky Art';
+        const routeName = 'SkyArt Flight Plan';
         let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
         xml += `<kml xmlns="http://www.opengis.net/kml/2.2">\n`;
         xml += `  <Document>\n`;
@@ -3778,7 +3778,7 @@
         // Export Buttons
         document.getElementById('downloadFplBtn')?.addEventListener('click', () => {
             const xml = generateGarminFplXml();
-            triggerFileDownload(xml, 'N890GF_SkyArt.fpl', 'application/xml');
+            triggerFileDownload(xml, 'SkyArt.fpl', 'application/xml');
         });
 
         document.getElementById('openForeflightBtn')?.addEventListener('click', () => {
@@ -3808,12 +3808,12 @@
 
         document.getElementById('downloadGpxBtn')?.addEventListener('click', () => {
             const xml = generateGpxXml();
-            triggerFileDownload(xml, 'N890GF_SkyArt.gpx', 'application/gpx+xml');
+            triggerFileDownload(xml, 'SkyArt.gpx', 'application/gpx+xml');
         });
 
         document.getElementById('downloadKmlBtn')?.addEventListener('click', () => {
             const xml = generateKmlXml();
-            triggerFileDownload(xml, 'N890GF_SkyArt.kml', 'application/vnd.google-earth.kml+xml');
+            triggerFileDownload(xml, 'SkyArt.kml', 'application/vnd.google-earth.kml+xml');
         });
     }
 
