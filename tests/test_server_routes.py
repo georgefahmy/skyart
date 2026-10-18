@@ -92,6 +92,75 @@ class TestServerIntegrity(unittest.TestCase):
         self.assertEqual(res_get_bob_final.status_code, 200)
         self.assertEqual(res_get_bob_final.get_json()["airport"]["icao"], "KCCR")
 
+    def test_ip_access_logging(self):
+        """Verify server logs client IP addresses for requests accessing the website."""
+        with self.assertLogs('sky_art', level='INFO') if 'sky_art' in app.logger.name else self.assertLogs(app.logger, level='INFO') as cm:
+            # 1. Access with X-Forwarded-For header
+            res1 = self.client.get('/', headers={'X-Forwarded-For': '198.51.100.42, 10.0.0.1'})
+            self.assertEqual(res1.status_code, 200)
+
+            # 2. Access with X-Real-IP header
+            res2 = self.client.get('/api/airports/search?q=SFO', headers={'X-Real-IP': '203.0.113.19'})
+            self.assertEqual(res2.status_code, 200)
+
+            # 3. Access with CF-Connecting-IP header
+            res3 = self.client.get('/', headers={'CF-Connecting-IP': '192.0.2.77'})
+            self.assertEqual(res3.status_code, 200)
+
+        logs = "\n".join(cm.output)
+        self.assertIn("198.51.100.42", logs)
+        self.assertIn("[ACCESS]", logs)
+        self.assertIn("203.0.113.19", logs)
+        self.assertIn("192.0.2.77", logs)
+
+    def test_saved_art_ip_logging(self):
+        """Verify server logs the names of saved art associated with the client IP address."""
+        import uuid
+        uid = f"usr_test_{uuid.uuid4().hex[:8]}"
+        art_name = "Golden Gate Star"
+        client_ip = "198.51.100.99"
+
+        with self.assertLogs(app.logger, level='INFO') as cm:
+            res_save = self.client.post(
+                '/api/sky_art/drawings',
+                headers={
+                    'X-User-ID': uid,
+                    'X-Forwarded-For': client_ip
+                },
+                json={
+                    "name": art_name,
+                    "basePoints": [
+                        {"lat": 37.7749, "lon": -122.4194},
+                        {"lat": 37.8044, "lon": -122.2712}
+                    ],
+                    "sizeNM": 15.0
+                }
+            )
+            self.assertEqual(res_save.status_code, 200)
+            data = res_save.get_json()
+            self.assertEqual(data["status"], "success")
+            self.assertEqual(data["drawing"]["name"], art_name)
+            self.assertEqual(data["drawing"]["ipAddress"], client_ip)
+            drawing_id = data["drawing"]["id"]
+
+            # Also verify delete logging
+            res_del = self.client.delete(
+                f'/api/sky_art/drawings/{drawing_id}',
+                headers={
+                    'X-User-ID': uid,
+                    'X-Forwarded-For': client_ip
+                }
+            )
+            self.assertEqual(res_del.status_code, 200)
+
+        logs = "\n".join(cm.output)
+        # Check that saved art name and IP are logged
+        self.assertIn("[SAVED ART]", logs)
+        self.assertIn(client_ip, logs)
+        self.assertIn(art_name, logs)
+        # Check that deleted art name and IP are logged
+        self.assertIn("[DELETED ART]", logs)
+
 
 if __name__ == '__main__':
     unittest.main()

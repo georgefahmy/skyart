@@ -1127,6 +1127,28 @@
             ArtState.projectedPoints.splice(artIdx, 1);
         }
 
+        if (ArtState.cornerLoopOverrides) {
+            const newOverrides = {};
+            if (isLoopClosed && artIdx === 0) {
+                for (const [key, val] of Object.entries(ArtState.cornerLoopOverrides)) {
+                    const k = parseInt(key, 10);
+                    if (k > 0 && k < totalPts - 1) {
+                        newOverrides[k - 1] = val;
+                    }
+                }
+            } else {
+                for (const [key, val] of Object.entries(ArtState.cornerLoopOverrides)) {
+                    const k = parseInt(key, 10);
+                    if (k < artIdx) {
+                        newOverrides[k] = val;
+                    } else if (k > artIdx) {
+                        newOverrides[k - 1] = val;
+                    }
+                }
+            }
+            ArtState.cornerLoopOverrides = newOverrides;
+        }
+
         ArtState.rawProjectedPoints = ArtState.projectedPoints.map(p => ({ lat: p.lat, lon: p.lon }));
         ArtState.basePoints = ArtState.projectedPoints.map(p => unprojectPoint(p.lat, p.lon));
         ArtState.baseContours = [ArtState.basePoints.slice()];
@@ -1152,6 +1174,20 @@
         HistoryManager.pushState();
 
         ArtState.projectedPoints.splice(afterArtIdx + 1, 0, { lat: insertLat, lon: insertLon });
+
+        if (ArtState.cornerLoopOverrides) {
+            const newOverrides = {};
+            for (const [key, val] of Object.entries(ArtState.cornerLoopOverrides)) {
+                const k = parseInt(key, 10);
+                if (k <= afterArtIdx) {
+                    newOverrides[k] = val;
+                } else {
+                    newOverrides[k + 1] = val;
+                }
+            }
+            ArtState.cornerLoopOverrides = newOverrides;
+        }
+
         ArtState.rawProjectedPoints = ArtState.projectedPoints.map(p => ({ lat: p.lat, lon: p.lon }));
         ArtState.basePoints = ArtState.projectedPoints.map(p => unprojectPoint(p.lat, p.lon));
         ArtState.baseContours = [ArtState.basePoints.slice()];
@@ -1652,8 +1688,45 @@
 
         ArtState.autopilotGhostPolyline.bindTooltip(
             tooltipMsg,
-            { sticky: true, direction: 'top' }
+            { sticky: true, direction: 'top', offset: [0, -8] }
         );
+
+        ArtState.autopilotGhostPolyline.on('mousemove', function (e) {
+            if (!ArtState.map || !waypoints || waypoints.length < 3) return;
+            const mousePt = ArtState.map.latLngToLayerPoint(e.latlng);
+            let minDistSq = Infinity;
+            let closestCornerIdx = -1;
+
+            for (let i = 1; i < waypoints.length - 1; i++) {
+                const cornerPt = ArtState.map.latLngToLayerPoint([waypoints[i].lat, waypoints[i].lon]);
+                const distSq = (mousePt.x - cornerPt.x) ** 2 + (mousePt.y - cornerPt.y) ** 2;
+                if (distSq < minDistSq) {
+                    minDistSq = distSq;
+                    closestCornerIdx = i;
+                }
+            }
+
+            if (closestCornerIdx > 0 && Math.sqrt(minDistSq) < 70) {
+                const pPrev = waypoints[closestCornerIdx - 1];
+                const pCorner = waypoints[closestCornerIdx];
+                const pNext = waypoints[closestCornerIdx + 1];
+                const cornerAnalysis = analyzeCornerTurn(pPrev, pCorner, pNext, turnRadius);
+                const wpLabel = pCorner.id || `WP${closestCornerIdx + 1}`;
+                const legInDist = calculateDistanceNM(pPrev.lat, pPrev.lon, pCorner.lat, pCorner.lon);
+                const legOutDist = calculateDistanceNM(pCorner.lat, pCorner.lon, pNext.lat, pNext.lon);
+
+                this.setTooltipContent(
+                    `<div style="text-align:left; line-height:1.4;">` +
+                    `<div style="font-weight:700; color:#fd7e14; font-size:0.88rem;"><i class="bi bi-bezier2 me-1"></i>Autopilot Turn at ${wpLabel}</div>` +
+                    `<div class="small">Turn Angle: <strong>${Math.round(cornerAnalysis.alpha)}°</strong> | Radius: <strong>${turnRadius.toFixed(1)} NM</strong></div>` +
+                    `<div class="small text-danger fw-bold">Corner Cutoff: -${cornerAnalysis.dCut.toFixed(2)} NM (Lead: ${cornerAnalysis.dLead.toFixed(2)} NM)</div>` +
+                    `<div class="text-muted small mt-1" style="font-size:0.72rem;">Incoming Leg: ${legInDist.toFixed(2)} NM · Outgoing Leg: ${legOutDist.toFixed(2)} NM</div>` +
+                    `</div>`
+                );
+            } else {
+                this.setTooltipContent(tooltipMsg);
+            }
+        });
     }
 
     // --- Map Rendering ---
@@ -1672,12 +1745,34 @@
         }
         ArtState.transitPolylineArr = null;
         if (ArtState.mapMarkers) {
-            ArtState.mapMarkers.forEach(m => ArtState.map && ArtState.map.removeLayer(m));
+            ArtState.mapMarkers.forEach(m => {
+                if (ArtState.map) {
+                    try {
+                        if (typeof m.isTooltipOpen === 'function' && m.isTooltipOpen()) {
+                            m.closeTooltip();
+                        }
+                    } catch (e) {}
+                    try {
+                        ArtState.map.removeLayer(m);
+                    } catch (e) {}
+                }
+            });
         }
         ArtState.mapMarkers = [];
         ArtState.midpointMarkers = [];
         if (ArtState.loopBackMarkers) {
-            ArtState.loopBackMarkers.forEach(m => ArtState.map && ArtState.map.removeLayer(m));
+            ArtState.loopBackMarkers.forEach(m => {
+                if (ArtState.map) {
+                    try {
+                        if (typeof m.isTooltipOpen === 'function' && m.isTooltipOpen()) {
+                            m.closeTooltip();
+                        }
+                    } catch (e) {}
+                    try {
+                        ArtState.map.removeLayer(m);
+                    } catch (e) {}
+                }
+            });
             ArtState.loopBackMarkers = [];
         }
     }
@@ -1690,6 +1785,11 @@
             const p1 = ArtState.projectedPoints[i];
             const p2 = ArtState.projectedPoints[i + 1];
             midM.setLatLng([(p1.lat + p2.lat) / 2, (p1.lon + p2.lon) / 2]);
+            const legDist = calculateDistanceNM(p1.lat, p1.lon, p2.lat, p2.lon);
+            const legBrng = Math.round(calculateBearingDeg(p1.lat, p1.lon, p2.lat, p2.lon));
+            if (typeof midM.setTooltipContent === 'function') {
+                midM.setTooltipContent(`<strong>Insert Waypoint</strong><br>Leg WP${i + 1} → WP${i + 2}: ${legDist.toFixed(2)} NM (${String(legBrng).padStart(3, '0')}°)`);
+            }
         }
     }
 
@@ -1710,6 +1810,111 @@
                 ? 'Hide Waypoint Indicators (View clean art linework)'
                 : 'Show Waypoint Indicators (Numbered circles & loop points)';
         }
+    }
+
+    function getClosestLegInfo(latlng) {
+        if (!ArtState.map) return null;
+        const activeRoutePts = ArtState.enableCornerLoopBacks
+            ? ArtState.waypoints.filter(w => !w.isAirport)
+            : ArtState.projectedPoints;
+        if (!activeRoutePts || activeRoutePts.length < 2) return null;
+
+        const mousePt = ArtState.map.latLngToLayerPoint(latlng);
+        let minDistSq = Infinity;
+        let bestIdx = 0;
+
+        for (let i = 0; i < activeRoutePts.length - 1; i++) {
+            const pA = activeRoutePts[i];
+            const pB = activeRoutePts[i + 1];
+            const ptA = ArtState.map.latLngToLayerPoint([pA.lat, pA.lon]);
+            const ptB = ArtState.map.latLngToLayerPoint([pB.lat, pB.lon]);
+            const dx = ptB.x - ptA.x;
+            const dy = ptB.y - ptA.y;
+            const l2 = dx * dx + dy * dy;
+            let t = 0.5;
+            if (l2 > 0) {
+                t = ((mousePt.x - ptA.x) * dx + (mousePt.y - ptA.y) * dy) / l2;
+                t = Math.max(0, Math.min(1, t));
+            }
+            const projX = ptA.x + t * dx;
+            const projY = ptA.y + t * dy;
+            const distSq = (mousePt.x - projX) ** 2 + (mousePt.y - projY) ** 2;
+            if (distSq < minDistSq) {
+                minDistSq = distSq;
+                bestIdx = i;
+            }
+        }
+
+        const p1 = activeRoutePts[bestIdx];
+        const p2 = activeRoutePts[bestIdx + 1];
+        const distNM = calculateDistanceNM(p1.lat, p1.lon, p2.lat, p2.lon);
+        const bearing = Math.round(calculateBearingDeg(p1.lat, p1.lon, p2.lat, p2.lon));
+
+        const id1 = p1.id || `WP${bestIdx + 1}`;
+        const id2 = p2.id || `WP${bestIdx + 2}`;
+
+        // Turn & cutoff analysis for p1
+        let cut1Info = null;
+        if (bestIdx > 0) {
+            const pPrev = activeRoutePts[bestIdx - 1];
+            const a1 = analyzeCornerTurn(pPrev, p1, p2, ArtState.autopilotTurnRadiusNM);
+            if (a1.alpha >= 12) {
+                cut1Info = { id: id1, alpha: Math.round(a1.alpha), dCut: a1.dCut, dLead: a1.dLead };
+            }
+        }
+
+        // Turn & cutoff analysis for p2
+        let cut2Info = null;
+        if (bestIdx + 1 < activeRoutePts.length - 1) {
+            const pNext = activeRoutePts[bestIdx + 2];
+            const a2 = analyzeCornerTurn(p1, p2, pNext, ArtState.autopilotTurnRadiusNM);
+            if (a2.alpha >= 12) {
+                cut2Info = { id: id2, alpha: Math.round(a2.alpha), dCut: a2.dCut, dLead: a2.dLead };
+            }
+        }
+
+        return {
+            index: bestIdx,
+            p1,
+            p2,
+            id1,
+            id2,
+            distNM,
+            bearing,
+            cut1Info,
+            cut2Info
+        };
+    }
+
+    function buildRouteLegTooltipHtml(leg) {
+        if (!leg) return "Click on route to insert waypoint";
+
+        let html = `<div style="text-align: left; line-height: 1.4;">`;
+        html += `<div style="font-weight: 700; color: #0d6efd; font-size: 0.88rem;">`;
+        html += `Leg ${leg.id1} → ${leg.id2}: ${leg.distNM.toFixed(2)} NM`;
+        html += `</div>`;
+        html += `<div class="text-muted small" style="font-size: 0.75rem;">`;
+        html += `Track: ${String(leg.bearing).padStart(3, '0')}°`;
+        html += `</div>`;
+
+        if (ArtState.showAutopilotGhost && (leg.cut1Info || leg.cut2Info)) {
+            const cuts = [];
+            if (leg.cut1Info) {
+                cuts.push(`${leg.cut1Info.id}: -${leg.cut1Info.dCut.toFixed(2)} NM (${leg.cut1Info.alpha}°)`);
+            }
+            if (leg.cut2Info) {
+                cuts.push(`${leg.cut2Info.id}: -${leg.cut2Info.dCut.toFixed(2)} NM (${leg.cut2Info.alpha}°)`);
+            }
+            html += `<div class="text-warning small mt-1" style="font-size: 0.72rem; font-weight: 600;">`;
+            html += `<i class="bi bi-bezier2 me-1"></i>AP Cutoff: ${cuts.join(' · ')}`;
+            html += `</div>`;
+        }
+
+        html += `<div class="text-secondary small mt-1" style="font-size: 0.70rem; border-top: 1px solid rgba(128,128,128,0.2); padding-top: 2px;">`;
+        html += `<i class="bi bi-plus-circle me-1"></i>Click route to insert waypoint`;
+        html += `</div>`;
+        html += `</div>`;
+        return html;
     }
 
     function renderRouteOnMap() {
@@ -1744,7 +1949,23 @@
         ArtState.routePolyline.bindTooltip("Click on route to insert waypoint", {
             sticky: true,
             direction: 'top',
-            offset: [0, -5]
+            offset: [0, -8]
+        });
+
+        ArtState.routePolyline.on('mouseover', function (e) {
+            if (ArtState.drawMode) return;
+            const leg = getClosestLegInfo(e.latlng);
+            if (leg) {
+                this.setTooltipContent(buildRouteLegTooltipHtml(leg));
+            }
+        });
+
+        ArtState.routePolyline.on('mousemove', function (e) {
+            if (ArtState.drawMode) return;
+            const leg = getClosestLegInfo(e.latlng);
+            if (leg) {
+                this.setTooltipContent(buildRouteLegTooltipHtml(leg));
+            }
         });
 
         ArtState.routePolyline.on('click', function (e) {
@@ -1787,6 +2008,8 @@
         // Departure Transit Line (dotted green)
         if (ArtState.includeAirport && ArtState.depAirport && ArtState.projectedPoints.length > 0) {
             const firstPt = ArtState.projectedPoints[0];
+            const depDist = calculateDistanceNM(ArtState.depAirport.lat, ArtState.depAirport.lon, firstPt.lat, firstPt.lon);
+            const depBrng = Math.round(calculateBearingDeg(ArtState.depAirport.lat, ArtState.depAirport.lon, firstPt.lat, firstPt.lon));
             ArtState.transitPolylineDep = L.polyline([
                 [ArtState.depAirport.lat, ArtState.depAirport.lon],
                 [firstPt.lat, firstPt.lon]
@@ -1796,11 +2019,18 @@
                 dashArray: '6, 6',
                 opacity: 0.8
             }).addTo(ArtState.map);
+
+            ArtState.transitPolylineDep.bindTooltip(
+                `<strong>Departure Transit: ${ArtState.depAirport.icao || 'DEP'} → WP1</strong><br>Distance: ${depDist.toFixed(2)} NM (Track ${String(depBrng).padStart(3, '0')}°)`,
+                { sticky: true, direction: 'top', offset: [0, -5] }
+            );
         }
 
         // Arrival Transit Line (dotted red)
         if (ArtState.includeAirport && ArtState.arrAirport && ArtState.projectedPoints.length > 0) {
             const lastPt = ArtState.projectedPoints[ArtState.projectedPoints.length - 1];
+            const arrDist = calculateDistanceNM(lastPt.lat, lastPt.lon, ArtState.arrAirport.lat, ArtState.arrAirport.lon);
+            const arrBrng = Math.round(calculateBearingDeg(lastPt.lat, lastPt.lon, ArtState.arrAirport.lat, ArtState.arrAirport.lon));
             ArtState.transitPolylineArr = L.polyline([
                 [lastPt.lat, lastPt.lon],
                 [ArtState.arrAirport.lat, ArtState.arrAirport.lon]
@@ -1810,6 +2040,11 @@
                 dashArray: '6, 6',
                 opacity: 0.8
             }).addTo(ArtState.map);
+
+            ArtState.transitPolylineArr.bindTooltip(
+                `<strong>Arrival Transit: WP${ArtState.projectedPoints.length} → ${ArtState.arrAirport.icao || 'ARR'}</strong><br>Distance: ${arrDist.toFixed(2)} NM (Track ${String(arrBrng).padStart(3, '0')}°)`,
+                { sticky: true, direction: 'top', offset: [0, -5] }
+            );
         }
 
         // Waypoint Markers
@@ -1830,23 +2065,53 @@
             if (isFirst) markerClass = 'first-pt';
             else if (isLast) markerClass = 'last-pt';
 
-            // Corner turn analysis for tooltip and highlighting
+            // Corner turn analysis and leg distances for tooltip and highlighting
             let turnInfo = '';
+            let legWarning = '';
             let pPrev = null;
             let pNext = null;
+            let prevName = '';
+            let nextName = '';
+
             if (idx > 0 && idx < totalPts - 1) {
                 pPrev = ArtState.projectedPoints[idx - 1];
+                prevName = `WP${idx}`;
                 pNext = ArtState.projectedPoints[idx + 1];
+                nextName = (isLoopClosed && (idx + 1 === totalPts - 1)) ? 'WP1' : `WP${idx + 2}`;
             } else if (idx === 0) {
-                if (ArtState.includeAirport && ArtState.depAirport && totalPts >= 2) {
+                if (isLoopClosed && totalPts >= 3) {
+                    pPrev = ArtState.projectedPoints[totalPts - 2];
+                    prevName = `WP${totalPts - 1}`;
+                } else if (ArtState.includeAirport && ArtState.depAirport) {
                     pPrev = ArtState.depAirport;
+                    prevName = ArtState.depAirport.icao;
+                }
+                if (totalPts >= 2) {
                     pNext = ArtState.projectedPoints[1];
+                    nextName = 'WP2';
                 }
             } else if (idx === totalPts - 1) {
-                if (ArtState.includeAirport && ArtState.arrAirport && totalPts >= 2) {
+                if (totalPts >= 2) {
                     pPrev = ArtState.projectedPoints[totalPts - 2];
-                    pNext = ArtState.arrAirport;
+                    prevName = `WP${totalPts - 1}`;
                 }
+                if (ArtState.includeAirport && ArtState.arrAirport) {
+                    pNext = ArtState.arrAirport;
+                    nextName = ArtState.arrAirport.icao;
+                }
+            }
+
+            const legInDist = pPrev ? calculateDistanceNM(pPrev.lat, pPrev.lon, pt.lat, pt.lon) : null;
+            const legInBrng = pPrev ? Math.round(calculateBearingDeg(pPrev.lat, pPrev.lon, pt.lat, pt.lon)) : null;
+            const legOutDist = pNext ? calculateDistanceNM(pt.lat, pt.lon, pNext.lat, pNext.lon) : null;
+            const legOutBrng = pNext ? Math.round(calculateBearingDeg(pt.lat, pt.lon, pNext.lat, pNext.lon)) : null;
+
+            let legsHtml = '';
+            if (legInDist !== null || legOutDist !== null) {
+                legsHtml = `<div class="mt-1 pt-1" style="border-top:1px solid rgba(128,128,128,0.25); font-size:0.75rem; line-height:1.4;">` +
+                    (legInDist !== null ? `<div><span class="text-muted">In Leg (${prevName}):</span> <strong>${legInDist.toFixed(2)} NM</strong> <span class="text-muted">(${String(legInBrng).padStart(3, '0')}°)</span></div>` : '') +
+                    (legOutDist !== null ? `<div><span class="text-muted">Out Leg (${nextName}):</span> <strong>${legOutDist.toFixed(2)} NM</strong> <span class="text-muted">(${String(legOutBrng).padStart(3, '0')}°)</span></div>` : '') +
+                    `</div>`;
             }
 
             if (pPrev && pNext) {
@@ -1857,18 +2122,30 @@
 
                 if (isSharp || isOverridden) {
                     if (isSharp) markerClass += ' sharp-corner-marker';
-                    turnInfo = `<br><span class="badge ${loopActive ? 'bg-success' : 'bg-warning text-dark'} small mt-1" style="font-size:0.7rem;"><i class="bi bi-compass me-1"></i>Turn: ${Math.round(analysis.alpha)}° | Cut: ${analysis.dCut.toFixed(2)} NM</span>` +
-                        (loopActive ? `<br><span class="text-success small" style="font-size:0.7rem;"><i class="bi bi-check-circle-fill me-1"></i>Loop-Back Active (Click marker to toggle)</span>` : `<br><span class="text-warning small" style="font-size:0.7rem;"><i class="bi bi-exclamation-triangle-fill me-1"></i>Autopilot cuts corner (Click marker to toggle)</span>`);
+                    turnInfo = `<div class="mt-1"><span class="badge ${loopActive ? 'bg-success' : 'bg-warning text-dark'} small" style="font-size:0.7rem;"><i class="bi bi-compass me-1"></i>Turn: ${Math.round(analysis.alpha)}° | Cut: ${analysis.dCut.toFixed(2)} NM</span></div>` +
+                        (loopActive ? `<div class="text-success small" style="font-size:0.7rem;"><i class="bi bi-check-circle-fill me-1"></i>Loop-Back Active (Click marker to toggle)</div>` : `<div class="text-warning small" style="font-size:0.7rem;"><i class="bi bi-exclamation-triangle-fill me-1"></i>Autopilot cuts corner (Click marker to toggle)</div>`);
                 } else {
-                    turnInfo = `<br><span class="text-muted small" style="font-size:0.68rem;">Turn: ${Math.round(analysis.alpha)}° (Gentle)</span>`;
+                    turnInfo = `<div class="text-muted small mt-1" style="font-size:0.68rem;">Turn: ${Math.round(analysis.alpha)}° (Gentle)</div>`;
+                }
+
+                if (legInDist !== null && legOutDist !== null && !loopActive) {
+                    const minLeg = Math.min(legInDist, legOutDist);
+                    if (analysis.dLead > minLeg) {
+                        legWarning = `<div class="text-danger small mt-1" style="font-size:0.7rem; font-weight:600;"><i class="bi bi-exclamation-octagon-fill me-1"></i>AP lead (${analysis.dLead.toFixed(2)} NM) exceeds leg length!</div>`;
+                    }
                 }
             }
 
             const wpTooltipText = (isLoopClosed && isFirst
                 ? `<strong>WP1 / WP${totalPts} (Start & Finish)</strong><br><span class="text-muted small">${pt.lat.toFixed(4)}°, ${pt.lon.toFixed(4)}°</span>`
                 : `<strong>WP${idx + 1}</strong><br><span class="text-muted small">${pt.lat.toFixed(4)}°, ${pt.lon.toFixed(4)}°</span>`) +
+                legsHtml +
                 turnInfo +
-                `<br><span class="text-primary small" style="font-size:0.72rem;"><i class="bi bi-arrows-move me-1"></i>Drag to adjust</span><br><span class="text-danger small" style="font-size:0.72rem;"><i class="bi bi-trash3 me-1"></i>Right-click to delete</span>`;
+                legWarning +
+                `<div class="mt-1 pt-1" style="border-top:1px solid rgba(128,128,128,0.25); font-size:0.72rem;">` +
+                `<span class="text-primary"><i class="bi bi-arrows-move me-1"></i>Drag to adjust</span><br>` +
+                `<span class="text-danger"><i class="bi bi-trash3 me-1"></i>Right-click to delete</span>` +
+                `</div>`;
 
             const icon = L.divIcon({
                 className: 'custom-wp-icon',
@@ -1974,14 +2251,10 @@
                 ArtState.baseContours = [ArtState.basePoints.slice()];
                 ArtState.rawProjectedContours = null;
 
-                if (ArtState.enableCornerLoopBacks) {
-                    renderRouteOnMap();
-                } else {
-                    updateMidpointMarkers();
-                    renderWaypointTable();
-                    updateStatsHUD();
-                    renderAutopilotGhost();
-                }
+                buildFullFlightPlan();
+                renderRouteOnMap();
+                updateStatsHUD();
+                renderWaypointTable();
             });
 
             ArtState.mapMarkers.push(marker);
@@ -2018,10 +2291,12 @@
                 const p2 = ArtState.projectedPoints[i + 1];
                 const midLat = (p1.lat + p2.lat) / 2;
                 const midLon = (p1.lon + p2.lon) / 2;
+                const legDist = calculateDistanceNM(p1.lat, p1.lon, p2.lat, p2.lon);
+                const legBrng = Math.round(calculateBearingDeg(p1.lat, p1.lon, p2.lat, p2.lon));
 
                 const midIcon = L.divIcon({
                     className: 'custom-wp-midpoint-icon',
-                    html: `<div class="waypoint-midpoint-marker" title="Add waypoint between WP${i + 1} & WP${i + 2}">+</div>`,
+                    html: `<div class="waypoint-midpoint-marker" title="Insert waypoint (Leg WP${i + 1} → WP${i + 2}: ${legDist.toFixed(2)} NM, ${String(legBrng).padStart(3, '0')}°)">+</div>`,
                     iconSize: [16, 16],
                     iconAnchor: [8, 8]
                 });
@@ -2030,6 +2305,11 @@
                     icon: midIcon,
                     interactive: true
                 }).addTo(ArtState.map);
+
+                midMarker.bindTooltip(
+                    `<strong>Insert Waypoint</strong><br>Leg WP${i + 1} → WP${i + 2}: ${legDist.toFixed(2)} NM (${String(legBrng).padStart(3, '0')}°)`,
+                    { direction: 'top', offset: [0, -5] }
+                );
 
                 const currentIdx = i;
                 midMarker.on('click', function (e) {

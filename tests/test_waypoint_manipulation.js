@@ -75,7 +75,10 @@ const mockL = {
         latlng,
         opts,
         events: {},
-        bindTooltip() { return this; },
+        tooltipContent: null,
+        bindTooltip(content) { this.tooltipContent = content; return this; },
+        setTooltipContent(content) { this.tooltipContent = content; return this; },
+        closeTooltip() { return this; },
         on(ev, fn) { this.events[ev] = fn; return this; },
         addTo() { return this; },
         setLatLng(newLL) { this.latlng = newLL; },
@@ -190,5 +193,51 @@ mockWindow.applyTransformations();
 // Verify that projectedPoints STILL has 4 points (3 edges), and has NOT revived the deleted 5th closing point
 assert.strictEqual(ArtState.projectedPoints.length, 4, `Expected 4 points after anchor move, got ${ArtState.projectedPoints.length}`);
 console.log("✅ Test 3 Passed: Anchor translation cleanly maintains user-edited 3-edged line without reverting deleted edges.");
+
+// --- Test 4: Waypoint Marker Tooltip Contains In Leg and Out Leg Distances & Bearings ---
+console.log("\n👉 Test 4: Waypoint marker tooltip contains In Leg and Out Leg distances & bearings...");
+mockWindow.loadPreset('diamond');
+const markersAfterLoad = ArtState.mapMarkers.filter(m => m.opts && m.opts.draggable);
+assert(markersAfterLoad.length >= 4, "Must have at least 4 waypoint markers");
+
+// Check WP2 (index 1) tooltip
+const wp2Marker = markersAfterLoad[1];
+assert(wp2Marker.tooltipContent, "WP2 marker must have tooltip content");
+assert(wp2Marker.tooltipContent.includes('In Leg'), "WP2 tooltip must include incoming leg info");
+assert(wp2Marker.tooltipContent.includes('Out Leg'), "WP2 tooltip must include outgoing leg info");
+assert(wp2Marker.tooltipContent.includes('NM'), "WP2 tooltip must display distance in NM");
+assert(wp2Marker.tooltipContent.includes('°'), "WP2 tooltip must display track bearing in degrees");
+console.log("✅ Test 4 Passed: Waypoint tooltips display incoming/outgoing leg length in NM and track bearing.");
+
+// --- Test 5: Inserting Waypoint Updates Tooltips and Shifts Loop Overrides ---
+console.log("\n👉 Test 5: Inserting a waypoint updates tooltips and shifts corner loop overrides...");
+ArtState.cornerLoopOverrides[2] = true; // Set override on WP3 (index 2)
+assert.strictEqual(ArtState.cornerLoopOverrides[2], true, "Override initially on index 2");
+
+// Insert waypoint between WP1 and WP2 (after index 0)
+mockWindow.insertWaypoint(0);
+assert.strictEqual(ArtState.projectedPoints.length, 6, "Inserting waypoint must increase projectedPoints count to 6");
+assert.strictEqual(ArtState.cornerLoopOverrides[3], true, "Override on index 2 must shift to index 3 after insertion at index 1");
+assert.strictEqual(ArtState.cornerLoopOverrides[2], undefined, "Old index 2 override must not linger");
+
+// Verify that the new markers on map have updated tooltips
+const markersAfterInsert = ArtState.mapMarkers.filter(m => m.opts && m.opts.draggable);
+assert.strictEqual(markersAfterInsert.length, 5, "Expected 5 unique corner markers on closed loop of 6 points");
+const wpNewMarker = markersAfterInsert[1];
+assert(wpNewMarker.tooltipContent.includes('WP2'), "New marker must be titled WP2");
+assert(wpNewMarker.tooltipContent.includes('In Leg (WP1)'), "New marker must have incoming leg from WP1");
+console.log("✅ Test 5 Passed: Waypoint insertion updates all tooltips and properly shifts cornerLoopOverrides.");
+
+// --- Test 6: Dragging a Waypoint Updates Tooltips on dragend ---
+console.log("\n👉 Test 6: Dragging a waypoint recomputes turn metrics and updates tooltips on dragend...");
+const targetMarker = markersAfterInsert[2]; // WP3
+const newDragPos = { lat: 37.0000, lng: -121.5000 };
+targetMarker.events.dragend({ target: { getLatLng: () => newDragPos } });
+
+const refreshedMarkers = ArtState.mapMarkers.filter(m => m.opts && m.opts.draggable);
+const refreshedWP3 = refreshedMarkers[2];
+assert(refreshedWP3.tooltipContent.includes('37.0000°'), "WP3 tooltip coordinates must reflect dragged position");
+assert(refreshedWP3.tooltipContent.includes('In Leg') && refreshedWP3.tooltipContent.includes('Out Leg'), "WP3 tooltip must have recomputed leg metrics");
+console.log("✅ Test 6 Passed: dragend re-renders route and recalculates marker tooltips with fresh coordinates and leg lengths.");
 
 console.log("\n🎉 All Waypoint Manipulation & Closed-Loop tests PASSED successfully!\n");

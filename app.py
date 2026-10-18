@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from flask import Flask, jsonify, make_response, render_template, request
 from flask_sqlalchemy import SQLAlchemy
 
+from logging.handlers import RotatingFileHandler
+
 import re
 import uuid
 
@@ -29,9 +31,66 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", f"sqlite:
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+# --- Server-Side Logging Configuration ---
+LOG_FILE = os.path.join(INSTANCE_DIR, "sky_art.log")
+log_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+
+file_handler = RotatingFileHandler(
+    LOG_FILE, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"
+)
+file_handler.setFormatter(log_formatter)
+file_handler.setLevel(logging.INFO)
+
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(log_formatter)
+console_handler.setLevel(logging.INFO)
+
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+if not any(isinstance(h, RotatingFileHandler) for h in root_logger.handlers):
+    root_logger.addHandler(file_handler)
+if not any(isinstance(h, logging.StreamHandler) and not isinstance(h, RotatingFileHandler) for h in root_logger.handlers):
+    root_logger.addHandler(console_handler)
+
+app.logger.setLevel(logging.INFO)
+app.logger.handlers.clear()
+app.logger.propagate = True
 
 USER_COOKIE_NAME = "skyart_uid"
+
+
+def get_client_ip():
+    """
+    Extract client IP address, supporting reverse proxies (Nginx, Cloudflare, etc.).
+    """
+    # 1. Cloudflare header
+    cf_ip = request.headers.get("CF-Connecting-IP")
+    if cf_ip:
+        return cf_ip.strip()
+
+    # 2. Standard X-Forwarded-For header (first entry is original client IP)
+    x_forwarded_for = request.headers.get("X-Forwarded-For")
+    if x_forwarded_for:
+        client_ip = x_forwarded_for.split(",")[0].strip()
+        if client_ip:
+            if ":" in client_ip and not client_ip.startswith("[") and client_ip.count(":") == 1:
+                client_ip = client_ip.split(":")[0]
+            return client_ip
+
+    # 3. Nginx X-Real-IP header
+    x_real_ip = request.headers.get("X-Real-IP")
+    if x_real_ip:
+        client_ip = x_real_ip.strip()
+        if ":" in client_ip and not client_ip.startswith("[") and client_ip.count(":") == 1:
+            client_ip = client_ip.split(":")[0]
+        return client_ip
+
+    # 4. Standard WSGI remote_addr
+    ip = request.remote_addr or "127.0.0.1"
+    if ":" in ip and not ip.startswith("[") and ip.count(":") == 1:
+        ip = ip.split(":")[0]
+    return ip
 
 
 def sanitize_user_id(uid):
@@ -61,9 +120,21 @@ def get_or_create_user_id():
 
 @app.before_request
 def identify_user_instance():
+    request._client_ip = get_client_ip()
     uid, is_new = get_or_create_user_id()
     request._skyart_user_id = uid
     request._skyart_user_id_is_new = is_new
+
+
+@app.after_request
+def log_request_access(response):
+    client_ip = getattr(request, "_client_ip", None) or get_client_ip()
+    uid = getattr(request, "_skyart_user_id", "-")
+    # Server-side logging of IP address accessing the website
+    app.logger.info(
+        f"[ACCESS] IP: {client_ip} | User: {uid} | {request.method} {request.path} -> {response.status_code}"
+    )
+    return response
 
 
 @app.after_request
@@ -88,6 +159,7 @@ class SkyArtDrawing(db.Model):
     id = db.Column(db.String(100), primary_key=True)
     user_id = db.Column(db.String(100), index=True, nullable=True)
     name = db.Column(db.String(100), nullable=False)
+    ip_address = db.Column(db.String(50), index=True, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     aspect_ratio = db.Column(db.Float, default=1.0)
     size_nm = db.Column(db.Float, default=12.0)
@@ -112,6 +184,7 @@ class SkyArtDrawing(db.Model):
         return {
             "id": self.id,
             "name": self.name,
+            "ipAddress": self.ip_address,
             "createdAt": self.created_at.isoformat() if self.created_at else None,
             "aspectRatio": self.aspect_ratio if self.aspect_ratio is not None else 1.0,
             "sizeNM": self.size_nm if self.size_nm is not None else 12.0,
@@ -156,11 +229,15 @@ with app.app_context():
                 conn.execute(text("ALTER TABLE sky_art_drawings ADD COLUMN user_id VARCHAR(100)"))
                 conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sky_art_user_id ON sky_art_drawings (user_id)"))
                 conn.commit()
+            if "ip_address" not in cols:
+                conn.execute(text("ALTER TABLE sky_art_drawings ADD COLUMN ip_address VARCHAR(50)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sky_art_ip_address ON sky_art_drawings (ip_address)"))
+                conn.commit()
             if "base_contours_json" not in cols:
                 conn.execute(text("ALTER TABLE sky_art_drawings ADD COLUMN base_contours_json TEXT"))
                 conn.commit()
     except Exception as e:
-        app.logger.warning(f"DB user_id / base_contours_json migration check: {e}")
+        app.logger.warning(f"DB migration check: {e}")
 
 
 
@@ -283,8 +360,10 @@ def api_save_sky_art_drawing():
         elif drawing.user_id and drawing.user_id != uid:
             return jsonify({"status": "error", "message": "Unauthorized"}), 403
 
+        client_ip = getattr(request, "_client_ip", None) or get_client_ip()
         drawing.name = name
         drawing.user_id = uid
+        drawing.ip_address = client_ip
         drawing.aspect_ratio = float(data.get("aspectRatio") or 1.0)
         drawing.size_nm = float(data.get("sizeNM") or 12.0)
         drawing.height_nm = float(data.get("heightNM") or 12.0)
@@ -299,6 +378,10 @@ def api_save_sky_art_drawing():
             drawing.base_contours_json = None
 
         db.session.commit()
+        # Server-side logging of saved art name associated with client IP address
+        app.logger.info(
+            f"[SAVED ART] IP: {client_ip} | Art Name: \"{drawing.name}\" | ID: {drawing.id} | User: {uid}"
+        )
         return jsonify({"status": "success", "drawing": drawing.to_dict()})
     except Exception as e:
         db.session.rollback()
@@ -316,8 +399,13 @@ def api_delete_sky_art_drawing(drawing_id):
         if drawing:
             if drawing.user_id and drawing.user_id != uid:
                 return jsonify({"status": "error", "message": "Unauthorized"}), 403
+            client_ip = getattr(request, "_client_ip", None) or get_client_ip()
+            art_name = drawing.name
             db.session.delete(drawing)
             db.session.commit()
+            app.logger.info(
+                f"[DELETED ART] IP: {client_ip} | Art Name: \"{art_name}\" | ID: {drawing_id} | User: {uid}"
+            )
             return jsonify({"status": "success"})
         return jsonify({"status": "not_found"}), 404
     except Exception as e:

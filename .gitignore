@@ -23,3 +23,8 @@ instance/
 .DS_Store
 .idea/
 .vscode/
+
+# Local maintenance & inspection scripts
+view_server_logs.sh
+*.local.sh
+
