@@ -713,6 +713,10 @@ document.addEventListener("DOMContentLoaded", function() {
         if (themeToggle) {
             themeToggle.textContent = isDark ? "☀️" : "🌙";
         }
+        if (typeof window.setMapBaseLayerForTheme === 'function') {
+            window.setMapBaseLayerForTheme(isDark);
+        }
+        window.dispatchEvent(new CustomEvent('themeChanged', { detail: { isDark: isDark } }));
     }
 
     const isDark = savedTheme === "dark";

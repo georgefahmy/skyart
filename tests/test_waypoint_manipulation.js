@@ -87,6 +87,7 @@ const mockL = {
         setView() {},
         fitBounds() {},
         removeLayer() {},
+        hasLayer() { return false; },
         on() {},
         getCenter() { return { lat: 37.0816, lng: -121.5970 }; },
         latLngToLayerPoint(ll) { return { x: (ll.lng || ll.lon) * 100, y: (ll.lat) * 100 }; },
@@ -104,7 +105,8 @@ const mockWindow = {
     localStorage: mockLocalStorage,
     L: mockL,
     DEFAULT_HOME_AIRPORT: null,
-    ArtState: null
+    ArtState: null,
+    addEventListener(ev, fn) {}
 };
 
 const vm = require('vm');

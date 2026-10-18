@@ -642,6 +642,10 @@
             ...tileDefaults
         });
 
+        const isDarkMode = (typeof document !== 'undefined' && document.body && document.body.classList.contains('dark-mode')) ||
+                           (typeof localStorage !== 'undefined' && localStorage.getItem('theme') === 'dark');
+        const initialBaseLayer = isDarkMode ? ArtState.layers.cartoDark : ArtState.layers.osm;
+
         ArtState.map = L.map('artMap', {
             center: [ArtState.center.lat, ArtState.center.lon],
             zoom: 11,
@@ -650,7 +654,7 @@
             scrollWheelZoom: false,
             smoothWheelZoom: true,
             smoothSensitivity: 1.0,
-            layers: [ArtState.layers.osm]
+            layers: [initialBaseLayer]
         });
 
         const baseMaps = {
@@ -680,6 +684,50 @@
 
         // Default artwork: Airplane
         loadPreset('airplane');
+    }
+
+    // --- Map Theme Base Layer Switching ---
+    function setMapBaseLayerForTheme(isDark) {
+        if (!ArtState.map || !ArtState.layers) return;
+        const targetLayer = isDark ? ArtState.layers.cartoDark : ArtState.layers.osm;
+        if (!targetLayer) return;
+
+        if (typeof ArtState.map.hasLayer === 'function' && ArtState.map.hasLayer(targetLayer)) {
+            return;
+        }
+
+        const allBaseLayers = [
+            ArtState.layers.osm,
+            ArtState.layers.cartoDark,
+            ArtState.layers.cartoVoyager,
+            ArtState.layers.satellite
+        ];
+        allBaseLayers.forEach(layer => {
+            if (layer && layer !== targetLayer) {
+                if (typeof ArtState.map.hasLayer === 'function') {
+                    if (ArtState.map.hasLayer(layer)) {
+                        ArtState.map.removeLayer(layer);
+                    }
+                } else if (typeof ArtState.map.removeLayer === 'function') {
+                    ArtState.map.removeLayer(layer);
+                }
+            }
+        });
+
+        if (typeof targetLayer.addTo === 'function') {
+            targetLayer.addTo(ArtState.map);
+        }
+        if (typeof targetLayer.bringToBack === 'function') {
+            targetLayer.bringToBack();
+        }
+    }
+
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+        window.addEventListener('themeChanged', function (e) {
+            if (e && e.detail && typeof e.detail.isDark === 'boolean') {
+                setMapBaseLayerForTheme(e.detail.isDark);
+            }
+        });
     }
 
     function createCenterMarker() {
@@ -3787,6 +3835,14 @@
             document.getElementById(id)?.addEventListener('click', () => HistoryManager.redo());
         });
 
+        // Theme toggle button listener (syncs map base layer on click)
+        document.getElementById('themeToggle')?.addEventListener('click', () => {
+            setTimeout(() => {
+                const isDark = document.body.classList.contains('dark-mode');
+                setMapBaseLayerForTheme(isDark);
+            }, 0);
+        });
+
         // Global Keyboard Shortcuts (Cmd+Z / Ctrl+Z for Undo, Cmd+Shift+Z / Ctrl+Y for Redo)
         document.addEventListener('keydown', (e) => {
             const tag = (e.target.tagName || '').toLowerCase();
@@ -4321,5 +4377,6 @@
     window.insertWaypoint = insertWaypoint;
     window.applyTransformations = applyTransformations;
     window.handleUploadedFile = handleUploadedFile;
+    window.setMapBaseLayerForTheme = setMapBaseLayerForTheme;
 
 })();
