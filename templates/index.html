@@ -220,7 +220,7 @@
                         <div class="tab-pane fade" id="tabDraw" role="tabpanel">
                             <div class="d-flex flex-column gap-2">
                                 <div class="d-flex gap-2">
-                                    <button class="btn btn-outline-primary btn-sm flex-fill" id="drawModeBtn" title="Draw freehand curves directly on the map">
+                                    <button class="btn btn-outline-primary btn-sm flex-fill fw-semibold" id="drawModeBtn" title="Draw freehand curves directly on the map">
                                         <i class="bi bi-brush-fill me-1"></i> Freehand Sketch
                                     </button>
                                     <button class="btn btn-outline-secondary btn-sm flex-fill" id="clickModeBtn" title="Click points on map to append waypoints">
@@ -235,8 +235,25 @@
                                         <i class="bi bi-trash me-1"></i> Clear Drawing
                                     </button>
                                 </div>
+
+                                <div class="d-flex justify-content-between align-items-center px-1">
+                                    <div class="form-check form-switch small mb-0">
+                                        <input class="form-check-input" type="checkbox" id="smartConnectStrokesCheck" checked>
+                                        <label class="form-check-label fw-semibold text-muted small" for="smartConnectStrokesCheck" style="font-size: 0.74rem;">
+                                            <i class="bi bi-bezier2 text-primary me-1"></i> Smart Connect Multi-Strokes
+                                        </label>
+                                    </div>
+                                    <span class="badge bg-light text-muted border" id="strokeCountBadge" style="font-size: 0.7rem;">0 strokes</span>
+                                </div>
+
+                                <!-- Dynamic Drawing State Banner -->
+                                <div id="drawModeStatus" class="alert alert-primary py-1 px-2 mb-0 small d-none" style="font-size: 0.72rem;">
+                                    <i class="bi bi-pencil-fill text-primary me-1"></i>
+                                    <strong>Sketching Active:</strong> Draw strokes on the map. Subsequent strokes connect automatically. Click <strong>Finish Sketch</strong> when done.
+                                </div>
+
                                 <div class="alert alert-secondary py-1 px-2 mb-0 small" style="font-size: 0.72rem;">
-                                    <strong>Tip:</strong> Click &amp; drag in Freehand mode to sketch. Click anywhere on the route line or click the <strong>+</strong> handle between two waypoints to add a waypoint in the middle. Drag markers to adjust, or right-click to delete.
+                                    <strong>Tip:</strong> Click &amp; drag in Freehand mode to sketch. Subsequent strokes intelligently connect at the nearest endpoints. Use <strong>Undo</strong> (Cmd+Z) to remove the last stroke.
                                 </div>
                             </div>
                         </div>

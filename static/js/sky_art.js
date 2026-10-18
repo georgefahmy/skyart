@@ -83,6 +83,9 @@
         clickMode: false,      // Waypoint click mode active
         isDrawing: false,
         currentFreehandPoints: [],
+        sourceType: 'preset',  // 'preset' | 'text' | 'import' | 'saved' | 'freehand'
+        strokeCount: 0,        // Count of connected freehand strokes
+        smartConnect: true,    // Smart multi-stroke connection active
         mapMarkers: [],
         midpointMarkers: [],
         centerMarker: null,
@@ -116,7 +119,9 @@
                 center: { ...ArtState.center },
                 simplificationTolerance: ArtState.simplificationTolerance,
                 optimizeEntryExit: ArtState.optimizeEntryExit,
-                routeReversed: ArtState.routeReversed
+                routeReversed: ArtState.routeReversed,
+                sourceType: ArtState.sourceType,
+                strokeCount: ArtState.strokeCount
             };
         },
 
@@ -175,9 +180,16 @@
             ArtState.simplificationTolerance = s.simplificationTolerance ?? 0.015;
             ArtState.optimizeEntryExit = s.optimizeEntryExit ?? true;
             ArtState.routeReversed = s.routeReversed ?? false;
+            ArtState.sourceType = s.sourceType || 'freehand';
+            ArtState.strokeCount = s.strokeCount ?? 0;
+            updateStrokeCountBadge();
 
             syncAllControls();
             applyTransformations();
+        },
+
+        updateStrokeCountBadge() {
+            updateStrokeCountBadge();
         },
 
         updateButtons() {
@@ -333,6 +345,7 @@
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c;
     }
+    const calcDistanceNM = calculateDistanceNM;
 
     function calculateBearingDeg(lat1, lon1, lat2, lon2) {
         const y = Math.sin(toRad(lon2 - lon1)) * Math.cos(toRad(lat2));
@@ -1838,6 +1851,9 @@
     // --- Vector SVG Parser ---
     function parseSvg(svgText, shouldFitBounds = true) {
         HistoryManager.pushState();
+        ArtState.sourceType = 'import';
+        ArtState.strokeCount = 0;
+        updateStrokeCountBadge();
         const mode = document.querySelector('input[name="importModeRadio"]:checked')?.value || 'outline';
 
         try {
@@ -2049,6 +2065,9 @@
     // Converts transparent PNGs or photos/sketches (JPEG, HEIF) into clean vector flight paths
     function traceRasterImage(imgElement, shouldFitBounds = true) {
         HistoryManager.pushState();
+        ArtState.sourceType = 'import';
+        ArtState.strokeCount = 0;
+        updateStrokeCountBadge();
         try {
             const maxDim = 450; // Constrain for rapid responsive tracing
             let w = imgElement.naturalWidth || imgElement.width || 300;
@@ -2328,6 +2347,9 @@
     // --- Shape Presets ---
     function loadPreset(shapeName) {
         HistoryManager.pushState();
+        ArtState.sourceType = 'preset';
+        ArtState.strokeCount = 0;
+        updateStrokeCountBadge();
         const pts = [];
         if (shapeName === 'rv7') {
             const rv7Outline = [
@@ -2562,6 +2584,10 @@
             return;
         }
 
+        ArtState.sourceType = 'saved';
+        ArtState.strokeCount = 0;
+        updateStrokeCountBadge();
+
         ArtState.aspectRatio = found.aspectRatio || 1.0;
         ArtState.basePoints = found.basePoints.map(p => ({ x: p.x, y: p.y }));
 
@@ -2747,6 +2773,10 @@
         if (!text || text.trim() === '') return;
         text = text.trim().toUpperCase();
 
+        ArtState.sourceType = 'text';
+        ArtState.strokeCount = 0;
+        updateStrokeCountBadge();
+
         const isStick = document.getElementById('textStyleStick')?.checked;
         if (isStick) {
             const stickPts = generateStickTextArt(text);
@@ -2804,6 +2834,66 @@
         tracePngImage(canvas);
     }
 
+    // --- Smart Multi-Stroke Freehand Connection ---
+    function updateStrokeCountBadge() {
+        const badge = document.getElementById('strokeCountBadge');
+        if (badge) {
+            const count = ArtState.strokeCount || 0;
+            badge.innerText = `${count} stroke${count === 1 ? '' : 's'}`;
+            badge.className = count > 0 ? 'badge bg-primary text-white' : 'badge bg-light text-muted border';
+        }
+    }
+
+    function smartConnectStroke(existingPoints, newStroke) {
+        if (!existingPoints || existingPoints.length === 0) {
+            return newStroke.slice();
+        }
+
+        const P = existingPoints.map(p => ({ lat: p.lat, lon: (p.lon !== undefined ? p.lon : p.lng) }));
+        const S = newStroke.map(p => ({ lat: p.lat, lon: (p.lon !== undefined ? p.lon : p.lng) }));
+
+        if (S.length === 0) return P;
+        if (P.length === 0) return S;
+
+        const pStart = P[0];
+        const pEnd = P[P.length - 1];
+        const sStart = S[0];
+        const sEnd = S[S.length - 1];
+
+        // 4 connection candidate distances
+        const dEndToStart = calcDistanceNM(pEnd.lat, pEnd.lon, sStart.lat, sStart.lon);
+        const dEndToEnd = calcDistanceNM(pEnd.lat, pEnd.lon, sEnd.lat, sEnd.lon);
+        const dStartToEnd = calcDistanceNM(pStart.lat, pStart.lon, sEnd.lat, sEnd.lon);
+        const dStartToStart = calcDistanceNM(pStart.lat, pStart.lon, sStart.lat, sStart.lon);
+
+        const minDist = Math.min(dEndToStart, dEndToEnd, dStartToEnd, dStartToStart);
+        const SNAP_THRESHOLD_NM = 0.08; // ~500 ft / 150m snap threshold
+
+        let combined = [];
+
+        if (minDist === dEndToStart) {
+            // Append forward: P -> S
+            const snap = (dEndToStart <= SNAP_THRESHOLD_NM);
+            combined = P.concat(snap ? S.slice(1) : S);
+        } else if (minDist === dEndToEnd) {
+            // Append reversed: P -> S_reversed
+            const sRev = S.slice().reverse();
+            const snap = (dEndToEnd <= SNAP_THRESHOLD_NM);
+            combined = P.concat(snap ? sRev.slice(1) : sRev);
+        } else if (minDist === dStartToEnd) {
+            // Prepend forward: S -> P
+            const snap = (dStartToEnd <= SNAP_THRESHOLD_NM);
+            combined = (snap ? S.slice(0, -1) : S).concat(P);
+        } else {
+            // Prepend reversed: S_reversed -> P
+            const sRev = S.slice().reverse();
+            const snap = (dStartToStart <= SNAP_THRESHOLD_NM);
+            combined = (snap ? sRev.slice(0, -1) : sRev).concat(P);
+        }
+
+        return combined;
+    }
+
     // --- Freehand and Click Drawing Setup ---
     function setupMapDrawingListeners() {
         ArtState.map.on('mousedown touchstart', function (e) {
@@ -2840,20 +2930,55 @@
                 ArtState.tempFreehandPolyline = null;
             }
 
-            if (ArtState.currentFreehandPoints.length >= 3) {
+            if (ArtState.currentFreehandPoints && ArtState.currentFreehandPoints.length >= 2) {
+                // Downsample raw points to eliminate micro-jitter
+                const rawPts = ArtState.currentFreehandPoints.map(ll => ({
+                    lat: ll.lat,
+                    lon: (ll.lng !== undefined) ? ll.lng : ll.lon
+                }));
+
+                const stroke = [rawPts[0]];
+                for (let i = 1; i < rawPts.length; i++) {
+                    const prev = stroke[stroke.length - 1];
+                    const cur = rawPts[i];
+                    const d = calcDistanceNM(prev.lat, prev.lon, cur.lat, cur.lon);
+                    if (d >= 0.005 || i === rawPts.length - 1) {
+                        stroke.push(cur);
+                    }
+                }
+
+                if (stroke.length < 2) return;
+
                 HistoryManager.pushState();
 
-                // Compute geographic bounding box of drawn points
+                const isConnected = (
+                    ArtState.smartConnect !== false &&
+                    ArtState.sourceType === 'freehand' &&
+                    ArtState.projectedPoints &&
+                    ArtState.projectedPoints.length >= 2
+                );
+
+                let combined = [];
+                if (isConnected) {
+                    combined = smartConnectStroke(ArtState.projectedPoints, stroke);
+                    ArtState.strokeCount = (ArtState.strokeCount || 1) + 1;
+                } else {
+                    combined = stroke;
+                    ArtState.sourceType = 'freehand';
+                    ArtState.strokeCount = 1;
+                }
+
+                updateStrokeCountBadge();
+
+                // Compute geographic bounding box of combined points
                 let minLat = Infinity, maxLat = -Infinity;
                 let minLon = Infinity, maxLon = -Infinity;
 
-                ArtState.currentFreehandPoints.forEach(ll => {
-                    const lat = ll.lat;
-                    const lon = (ll.lng !== undefined) ? ll.lng : ll.lon;
-                    if (lat < minLat) minLat = lat;
-                    if (lat > maxLat) maxLat = lat;
-                    if (lon < minLon) minLon = lon;
-                    if (lon > maxLon) maxLon = lon;
+                combined.forEach(pt => {
+                    if (pt.lat < minLat) minLat = pt.lat;
+                    if (pt.lat > maxLat) maxLat = pt.lat;
+                    if (pt.lon < minLon) minLon = pt.lon;
+                    if (pt.lon > maxLon) maxLon = pt.lon;
                 });
 
                 const centerLat = (minLat + maxLat) / 2;
@@ -2880,24 +3005,18 @@
                 ArtState.flipV = false;
                 ArtState.routeReversed = false;
 
-                // Normalize base points to [-0.5, 0.5]:
-                // In geographic/Cartesian space, North is positive Y.
-                // Do NOT negate Y so the drawn shape is NOT flipped vertically.
                 const spanX = (maxLon - minLon) || 0.0001;
                 const spanY = (maxLat - minLat) || 0.0001;
 
-                ArtState.basePoints = ArtState.currentFreehandPoints.map(ll => {
-                    const lat = ll.lat;
-                    const lon = (ll.lng !== undefined) ? ll.lng : ll.lon;
-                    return {
-                        x: (lon - centerLon) / spanX,
-                        y: (lat - centerLat) / spanY
-                    };
-                });
+                ArtState.basePoints = combined.map(pt => ({
+                    x: (pt.lon - centerLon) / spanX,
+                    y: (pt.lat - centerLat) / spanY
+                }));
+                ArtState.baseContours = null;
 
                 syncAllControls();
                 applyTransformations();
-                toggleDrawMode(false);
+                // Stay in drawing mode so subsequent strokes can be added continuously!
             }
         });
 
@@ -2922,14 +3041,25 @@
         ArtState.drawMode = active;
         const btn = document.getElementById('drawModeBtn');
         const mapEl = document.getElementById('artMap');
+        const statusEl = document.getElementById('drawModeStatus');
 
         if (active) {
             ArtState.clickMode = false;
             document.getElementById('clickModeBtn')?.classList.remove('active');
-            if (btn) btn.classList.add('active');
+            if (btn) {
+                btn.classList.add('active', 'btn-primary');
+                btn.classList.remove('btn-outline-primary');
+                btn.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> Finish Sketch';
+            }
+            if (statusEl) statusEl.classList.remove('d-none');
             mapEl.classList.add('drawing-active');
         } else {
-            if (btn) btn.classList.remove('active');
+            if (btn) {
+                btn.classList.remove('active', 'btn-primary');
+                btn.classList.add('btn-outline-primary');
+                btn.innerHTML = '<i class="bi bi-brush-fill me-1"></i> Freehand Sketch';
+            }
+            if (statusEl) statusEl.classList.add('d-none');
             mapEl.classList.remove('drawing-active');
             ArtState.map.dragging.enable();
         }
@@ -3654,10 +3784,32 @@
             ArtState.basePoints = [];
             ArtState.projectedPoints = [];
             ArtState.rawProjectedPoints = [];
+            ArtState.sourceType = 'freehand';
+            ArtState.strokeCount = 0;
+            updateStrokeCountBadge();
             buildFullFlightPlan();
             renderRouteOnMap();
             updateStatsHUD();
             renderWaypointTable();
+        });
+
+        // Smart Connect Multi-Strokes Toggle Switch
+        const smartConnectCheck = document.getElementById('smartConnectStrokesCheck');
+        if (smartConnectCheck) {
+            smartConnectCheck.checked = (ArtState.smartConnect !== false);
+            smartConnectCheck.addEventListener('change', () => {
+                ArtState.smartConnect = !!smartConnectCheck.checked;
+            });
+        }
+
+        // Tab Switching: turn off drawing/clicking modes when navigating away from Draw tab
+        document.querySelectorAll('#artModeTabs button[data-bs-toggle="pill"]').forEach(tabBtn => {
+            tabBtn.addEventListener('shown.bs.tab', (e) => {
+                if (e.target && e.target.id !== 'draw-tab') {
+                    toggleDrawMode(false);
+                    toggleClickMode(false);
+                }
+            });
         });
 
         // Preset buttons
