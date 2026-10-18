@@ -19,15 +19,23 @@
     <link rel="stylesheet" href="/static/css/sky_art.css">
 
     <style>
-        body {
-            padding-top: 56px;
+        html, body {
+            height: 100%;
+            height: 100dvh;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            overscroll-behavior: none;
             background-color: #f8f9fa;
         }
+        body {
+            display: flex;
+            flex-direction: column;
+        }
         .navbar {
-            position: fixed;
-            top: 0;
+            flex-shrink: 0;
             width: 100%;
-            z-index: 1050;
+            z-index: 1060;
         }
         .card-header[data-bs-toggle="collapse"],
         .card-header[role="button"] {
@@ -46,7 +54,7 @@
 <body>
 
 <!-- Top Navigation -->
-<nav class="navbar navbar-expand navbar-dark bg-dark fixed-top" style="z-index: 1060; overflow: visible;">
+<nav class="navbar navbar-expand navbar-dark bg-dark" style="z-index: 1060; overflow: visible;">
     <div class="container-fluid px-3" style="overflow: visible;">
         <div class="d-flex align-items-center gap-2">
             <a class="navbar-brand fw-bold mb-0 py-0 ms-1 d-flex align-items-center gap-2" href="/">

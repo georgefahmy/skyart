@@ -5,9 +5,12 @@
 
 .sky-art-container,
 .flight-art-container {
-    height: calc(100vh - 56px);
+    flex: 1;
+    min-height: 0;
+    height: 100%;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 
 @media (min-width: 992px) {
@@ -15,6 +18,8 @@
     .flight-art-layout {
         display: flex;
         flex: 1;
+        min-height: 0;
+        height: 100%;
         overflow: hidden;
     }
     .sky-art-sidebar,
@@ -24,6 +29,7 @@
         max-width: 480px;
         height: 100%;
         overflow-y: auto;
+        overscroll-behavior: contain;
         border-right: 1px solid rgba(0,0,0,0.1);
         z-index: 1000;
         background: #ffffff;
@@ -31,16 +37,23 @@
     .sky-art-map-wrap,
     .flight-art-map-wrap {
         flex: 1;
+        min-height: 0;
         height: 100%;
         position: relative;
     }
 }
 
 @media (max-width: 991.98px) {
+    html, body {
+        overflow-y: auto !important;
+        overscroll-behavior: auto !important;
+    }
     .sky-art-container,
     .flight-art-container {
         height: auto;
         min-height: calc(100vh - 56px);
+        min-height: calc(100dvh - 56px);
+        overflow: visible;
     }
     .sky-art-layout,
     .flight-art-layout {
