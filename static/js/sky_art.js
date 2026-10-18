@@ -365,10 +365,24 @@
         L.Map.SmoothWheelZoom = L.Handler.extend({
             addHooks: function () {
                 L.DomEvent.on(this._map._container, 'wheel', this._onWheelScroll, this);
+                this._map.on('movestart dragstart zoomstart', this._onMapInterrupt, this);
             },
 
             removeHooks: function () {
                 L.DomEvent.off(this._map._container, 'wheel', this._onWheelScroll, this);
+                this._map.off('movestart dragstart zoomstart', this._onMapInterrupt, this);
+            },
+
+            _onMapInterrupt: function () {
+                if (this._isWheeling || this._moved) {
+                    clearTimeout(this._timeoutId);
+                    cancelAnimationFrame(this._zoomAnimationId);
+                    this._isWheeling = false;
+                    if (this._moved) {
+                        this._moved = false;
+                        this._map._moveEnd(true);
+                    }
+                }
             },
 
             _onWheelScroll: function (e) {
@@ -430,7 +444,7 @@
                 this._wheelMouseLatLng = map.containerPointToLatLng(this._wheelMousePosition);
 
                 clearTimeout(this._timeoutId);
-                this._timeoutId = setTimeout(this._onWheelEnd.bind(this), 220);
+                this._timeoutId = setTimeout(this._onWheelEnd.bind(this), 200);
 
                 L.DomEvent.preventDefault(e);
                 L.DomEvent.stopPropagation(e);
@@ -438,6 +452,12 @@
 
             _onWheelEnd: function () {
                 this._isWheeling = false;
+                cancelAnimationFrame(this._zoomAnimationId);
+                if (this._moved) {
+                    this._map._move(this._center || this._map.getCenter(), this._goalZoom);
+                    this._moved = false;
+                    this._map._moveEnd(true);
+                }
             },
 
             _updateWheelZoom: function () {
@@ -450,6 +470,11 @@
 
                 if (!map.getCenter().equals(this._prevCenter, 1e-5) || Math.abs(map.getZoom() - this._prevZoom) > 1e-4) {
                     this._isWheeling = false;
+                    cancelAnimationFrame(this._zoomAnimationId);
+                    if (this._moved) {
+                        this._moved = false;
+                        map._moveEnd(true);
+                    }
                     return;
                 }
 
@@ -457,10 +482,11 @@
                 var diff = this._goalZoom - currentZoom;
 
                 if (!this._isWheeling && Math.abs(diff) < 0.002) {
+                    cancelAnimationFrame(this._zoomAnimationId);
                     if (this._moved) {
                         map._move(this._center || map.getCenter(), this._goalZoom);
-                        map._moveEnd(true);
                         this._moved = false;
+                        map._moveEnd(true);
                     }
                     return;
                 }
@@ -468,23 +494,21 @@
                 this._zoom = currentZoom + diff * 0.22;
                 this._zoom = Math.round(this._zoom * 1000) / 1000;
 
-                var delta = this._wheelMousePosition.subtract(this._centerPoint);
-                if (delta.x !== 0 || delta.y !== 0) {
-                    if (map.options.smoothWheelZoom === 'center') {
-                        this._center = this._startLatLng;
-                    } else {
-                        this._center = map.unproject(map.project(this._wheelMouseLatLng, this._zoom).subtract(delta), this._zoom);
-                    }
-
-                    if (!this._moved) {
-                        map._moveStart(true, false);
-                        this._moved = true;
-                    }
-
-                    map._move(this._center, this._zoom);
-                    this._prevCenter = map.getCenter();
-                    this._prevZoom = map.getZoom();
+                var delta = this._wheelMousePosition ? this._wheelMousePosition.subtract(this._centerPoint) : new L.Point(0, 0);
+                if (map.options.smoothWheelZoom === 'center' || (delta.x === 0 && delta.y === 0)) {
+                    this._center = this._startLatLng || map.getCenter();
+                } else {
+                    this._center = map.unproject(map.project(this._wheelMouseLatLng, this._zoom).subtract(delta), this._zoom);
                 }
+
+                if (!this._moved) {
+                    map._moveStart(true, false);
+                    this._moved = true;
+                }
+
+                map._move(this._center, this._zoom);
+                this._prevCenter = map.getCenter();
+                this._prevZoom = map.getZoom();
 
                 this._zoomAnimationId = requestAnimationFrame(this._updateWheelZoom.bind(this));
             }
@@ -548,6 +572,15 @@
         L.control.layers(baseMaps, null, { position: 'topright' }).addTo(ArtState.map);
 
         L.control.scale({ imperial: true, metric: false, position: 'bottomleft' }).addTo(ArtState.map);
+
+        // Ensure SVG vector layers (polylines) and DOM waypoint markers stay 100% in sync on move/zoom/drag
+        function resyncMapRenderers() {
+            if (!ArtState.map) return;
+            if (ArtState.map._renderer && typeof ArtState.map._renderer._reset === 'function') {
+                ArtState.map._renderer._reset();
+            }
+        }
+        ArtState.map.on('moveend dragend zoomend', resyncMapRenderers);
 
         // Center Pin
         createCenterMarker();
