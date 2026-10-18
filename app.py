@@ -7,16 +7,14 @@ Standalone server application.
 import json
 import logging
 import os
+import re
 import time
+import uuid
 from datetime import datetime, timezone
+from logging.handlers import RotatingFileHandler
 
 from flask import Flask, jsonify, make_response, render_template, request
 from flask_sqlalchemy import SQLAlchemy
-
-from logging.handlers import RotatingFileHandler
-
-import re
-import uuid
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
@@ -27,7 +25,9 @@ app.secret_key = os.environ.get("SECRET_KEY", "skyart-standalone-secret-key-9281
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
 
 db_path = os.path.join(app.instance_path, "sky_art.db")
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", f"sqlite:///{db_path}")
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
+    "DATABASE_URL", f"sqlite:///{db_path}"
+)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
@@ -50,7 +50,10 @@ root_logger = logging.getLogger()
 root_logger.setLevel(logging.INFO)
 if not any(isinstance(h, RotatingFileHandler) for h in root_logger.handlers):
     root_logger.addHandler(file_handler)
-if not any(isinstance(h, logging.StreamHandler) and not isinstance(h, RotatingFileHandler) for h in root_logger.handlers):
+if not any(
+    isinstance(h, logging.StreamHandler) and not isinstance(h, RotatingFileHandler)
+    for h in root_logger.handlers
+):
     root_logger.addHandler(console_handler)
 
 app.logger.setLevel(logging.INFO)
@@ -74,7 +77,11 @@ def get_client_ip():
     if x_forwarded_for:
         client_ip = x_forwarded_for.split(",")[0].strip()
         if client_ip:
-            if ":" in client_ip and not client_ip.startswith("[") and client_ip.count(":") == 1:
+            if (
+                ":" in client_ip
+                and not client_ip.startswith("[")
+                and client_ip.count(":") == 1
+            ):
                 client_ip = client_ip.split(":")[0]
             return client_ip
 
@@ -82,7 +89,11 @@ def get_client_ip():
     x_real_ip = request.headers.get("X-Real-IP")
     if x_real_ip:
         client_ip = x_real_ip.strip()
-        if ":" in client_ip and not client_ip.startswith("[") and client_ip.count(":") == 1:
+        if (
+            ":" in client_ip
+            and not client_ip.startswith("[")
+            and client_ip.count(":") == 1
+        ):
             client_ip = client_ip.split(":")[0]
         return client_ip
 
@@ -146,7 +157,7 @@ def persist_user_cookie(response):
             USER_COOKIE_NAME,
             uid,
             max_age=315360000,  # 10 years persistence
-            httponly=False,     # Allow frontend JS to read for localStorage fallback
+            httponly=False,  # Allow frontend JS to read for localStorage fallback
             samesite="Lax",
             secure=request.is_secure,
         )
@@ -205,7 +216,11 @@ class SkyArtHomeAirport(db.Model):
     name = db.Column(db.String(150), nullable=False)
     lat = db.Column(db.Float, nullable=False)
     lon = db.Column(db.Float, nullable=False)
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
     def to_dict(self):
         return {
@@ -222,23 +237,41 @@ with app.app_context():
     db.create_all()
     try:
         from sqlalchemy import text
+
         with db.engine.connect() as conn:
             res = conn.execute(text("PRAGMA table_info(sky_art_drawings)")).fetchall()
             cols = [r[1] for r in res]
             if "user_id" not in cols:
-                conn.execute(text("ALTER TABLE sky_art_drawings ADD COLUMN user_id VARCHAR(100)"))
-                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sky_art_user_id ON sky_art_drawings (user_id)"))
+                conn.execute(
+                    text("ALTER TABLE sky_art_drawings ADD COLUMN user_id VARCHAR(100)")
+                )
+                conn.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS idx_sky_art_user_id ON sky_art_drawings (user_id)"
+                    )
+                )
                 conn.commit()
             if "ip_address" not in cols:
-                conn.execute(text("ALTER TABLE sky_art_drawings ADD COLUMN ip_address VARCHAR(50)"))
-                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sky_art_ip_address ON sky_art_drawings (ip_address)"))
+                conn.execute(
+                    text(
+                        "ALTER TABLE sky_art_drawings ADD COLUMN ip_address VARCHAR(50)"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS idx_sky_art_ip_address ON sky_art_drawings (ip_address)"
+                    )
+                )
                 conn.commit()
             if "base_contours_json" not in cols:
-                conn.execute(text("ALTER TABLE sky_art_drawings ADD COLUMN base_contours_json TEXT"))
+                conn.execute(
+                    text(
+                        "ALTER TABLE sky_art_drawings ADD COLUMN base_contours_json TEXT"
+                    )
+                )
                 conn.commit()
     except Exception as e:
         app.logger.warning(f"DB migration check: {e}")
-
 
 
 # --- Airport Search Service ---
@@ -320,8 +353,7 @@ def api_get_sky_art_drawings():
         if not uid:
             return jsonify([])
         drawings = (
-            SkyArtDrawing.query
-            .filter_by(user_id=uid)
+            SkyArtDrawing.query.filter_by(user_id=uid)
             .order_by(SkyArtDrawing.created_at.desc())
             .all()
         )
@@ -338,7 +370,15 @@ def api_save_sky_art_drawing():
     try:
         uid = getattr(request, "_skyart_user_id", None)
         if not uid:
-            return jsonify({"status": "error", "message": "Missing user instance identification"}), 400
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": "Missing user instance identification",
+                    }
+                ),
+                400,
+            )
 
         data = request.get_json(silent=True) or {}
         name = (data.get("name") or "").strip()
@@ -351,7 +391,10 @@ def api_save_sky_art_drawing():
 
         base_points = data.get("basePoints") or []
         if not base_points or len(base_points) < 2:
-            return jsonify({"status": "error", "message": "At least 2 points required"}), 400
+            return (
+                jsonify({"status": "error", "message": "At least 2 points required"}),
+                400,
+            )
 
         drawing = db.session.get(SkyArtDrawing, drawing_id)
         if not drawing:
@@ -380,7 +423,7 @@ def api_save_sky_art_drawing():
         db.session.commit()
         # Server-side logging of saved art name associated with client IP address
         app.logger.info(
-            f"[SAVED ART] IP: {client_ip} | Art Name: \"{drawing.name}\" | ID: {drawing.id} | User: {uid}"
+            f'[SAVED ART] IP: {client_ip} | Art Name: "{drawing.name}" | ID: {drawing.id} | User: {uid}'
         )
         return jsonify({"status": "success", "drawing": drawing.to_dict()})
     except Exception as e:
@@ -404,7 +447,7 @@ def api_delete_sky_art_drawing(drawing_id):
             db.session.delete(drawing)
             db.session.commit()
             app.logger.info(
-                f"[DELETED ART] IP: {client_ip} | Art Name: \"{art_name}\" | ID: {drawing_id} | User: {uid}"
+                f'[DELETED ART] IP: {client_ip} | Art Name: "{art_name}" | ID: {drawing_id} | User: {uid}'
             )
             return jsonify({"status": "success"})
         return jsonify({"status": "not_found"}), 404
@@ -447,7 +490,12 @@ def api_save_home_airport():
         lon = data.get("lon")
 
         if not icao or lat is None or lon is None:
-            return jsonify({"status": "error", "message": "Missing required airport fields"}), 400
+            return (
+                jsonify(
+                    {"status": "error", "message": "Missing required airport fields"}
+                ),
+                400,
+            )
 
         lat = float(lat)
         lon = float(lon)
