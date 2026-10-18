@@ -91,15 +91,35 @@ body.dark-mode .btn-outline-success,
 body.dark-mode .btn-outline-warning,
 body.dark-mode .btn-outline-danger,
 body.dark-mode .btn-outline-secondary,
-body.dark-mode .btn-outline-info {
-    color: #e0e0e0;
-    border-color: #555;
+body.dark-mode .btn-outline-info,
+body.dark-mode .btn-outline-dark,
+body.dark-mode #showQrBtn {
+    color: #e0e0e0 !important;
+    border-color: #555 !important;
 }
 
-body.dark-mode .btn-outline-secondary:hover {
-    background-color: #3a3b3c;
-    border-color: #666;
-    color: #fff;
+body.dark-mode .btn-outline-secondary:hover,
+body.dark-mode .btn-outline-dark:hover,
+body.dark-mode #showQrBtn:hover {
+    background-color: #3a3b3c !important;
+    border-color: #666 !important;
+    color: #ffffff !important;
+}
+
+/* Light background elements in dark mode */
+body.dark-mode .bg-light {
+    background-color: #242526 !important;
+    color: #e0e0e0 !important;
+    border-color: #38393a !important;
+}
+
+/* ForeFlight QR Code in dark mode */
+#qrCodeContainer canvas,
+#qrCodeContainer img {
+    background-color: #ffffff;
+    padding: 12px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
 /* Warning badges */
@@ -112,3 +132,4 @@ body.dark-mode .bg-warning * {
 body.dark-mode .text-muted {
     color: #9e9e9e !important;
 }
+

@@ -247,6 +247,19 @@ body.dark-mode .waypoint-midpoint-marker:hover,
     color: #ffffff;
 }
 
+body.dark-mode #showQrBtn,
+[data-bs-theme="dark"] #showQrBtn {
+    color: #e0e0e0 !important;
+    border-color: #555555 !important;
+}
+body.dark-mode #showQrBtn:hover,
+[data-bs-theme="dark"] #showQrBtn:hover {
+    background-color: #3a3b3c !important;
+    border-color: #666666 !important;
+    color: #ffffff !important;
+}
+
+
 /* Range input display */
 .range-val-badge {
     font-size: 0.8rem;
@@ -297,7 +310,7 @@ body.dark-mode .airport-autocomplete-item:hover {
     box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
 
-/* Floating Map Toolbar (Undo/Redo/Reverse) */
+/* Floating Map Toolbar (Undo / Redo / Reverse / AP Cut / Loops / Waypoints) */
 .map-floating-toolbar {
     position: absolute;
     top: 10px;
@@ -313,12 +326,87 @@ body.dark-mode .airport-autocomplete-item:hover {
     box-shadow: 0 2px 6px rgba(0,0,0,0.2);
     background: #ffffff;
     color: #212529;
+    border: 1px solid #ced4da;
+    transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, color 0.15s ease-in-out;
 }
+.map-floating-toolbar .btn:hover {
+    background: #f8f9fa;
+    color: #000000;
+}
+
+/* Active primary buttons (Loops, Waypoints, Reverse) */
+.map-floating-toolbar .btn.active.btn-primary,
+.map-floating-toolbar .btn.active.btn-primary:hover,
+.map-floating-toolbar .btn.active.btn-primary:focus {
+    background-color: #0d6efd !important;
+    background: #0d6efd !important;
+    color: #ffffff !important;
+    border-color: #0b5ed7 !important;
+}
+.map-floating-toolbar .btn.active.btn-primary i,
+.map-floating-toolbar .btn.active.btn-primary .text-primary {
+    color: #ffffff !important;
+}
+
+/* Active warning button (AP Cut) */
+.map-floating-toolbar .btn.active.btn-warning,
+.map-floating-toolbar .btn.active.btn-warning:hover,
+.map-floating-toolbar .btn.active.btn-warning:focus {
+    background-color: #ffc107 !important;
+    background: #ffc107 !important;
+    color: #000000 !important;
+    border-color: #d39e00 !important;
+}
+.map-floating-toolbar .btn.active.btn-warning i,
+.map-floating-toolbar .btn.active.btn-warning .text-warning,
+.map-floating-toolbar .btn.active.btn-warning .text-dark {
+    color: #000000 !important;
+}
+
+/* Dark Mode Toolbar Styles */
 body.dark-mode .map-floating-toolbar .btn {
     background: #242526;
     color: #e0e0e0;
     border-color: #444444;
 }
+body.dark-mode .map-floating-toolbar .btn:hover {
+    background: #333940;
+    color: #ffffff;
+}
+body.dark-mode .map-floating-toolbar .btn .text-primary {
+    color: #38bdf8 !important;
+}
+body.dark-mode .map-floating-toolbar .btn .text-warning {
+    color: #fbbf24 !important;
+}
+
+body.dark-mode .map-floating-toolbar .btn.active.btn-primary,
+body.dark-mode .map-floating-toolbar .btn.active.btn-primary:hover,
+body.dark-mode .map-floating-toolbar .btn.active.btn-primary:focus {
+    background-color: #0d6efd !important;
+    background: #0d6efd !important;
+    color: #ffffff !important;
+    border-color: #38bdf8 !important;
+}
+body.dark-mode .map-floating-toolbar .btn.active.btn-primary i,
+body.dark-mode .map-floating-toolbar .btn.active.btn-primary .text-primary {
+    color: #ffffff !important;
+}
+
+body.dark-mode .map-floating-toolbar .btn.active.btn-warning,
+body.dark-mode .map-floating-toolbar .btn.active.btn-warning:hover,
+body.dark-mode .map-floating-toolbar .btn.active.btn-warning:focus {
+    background-color: #ffc107 !important;
+    background: #ffc107 !important;
+    color: #000000 !important;
+    border-color: #ffca2c !important;
+}
+body.dark-mode .map-floating-toolbar .btn.active.btn-warning i,
+body.dark-mode .map-floating-toolbar .btn.active.btn-warning .text-warning,
+body.dark-mode .map-floating-toolbar .btn.active.btn-warning .text-dark {
+    color: #000000 !important;
+}
+
 .map-floating-toolbar .btn:disabled,
 .map-floating-toolbar .btn.disabled {
     opacity: 0.45;
@@ -388,4 +476,24 @@ body.dark-mode .saved-drawing-row:hover {
 }
 #tabPresetsDropdownMenu {
     box-shadow: 0 0.5rem 1.2rem rgba(0, 0, 0, 0.25) !important;
+}
+
+/* Autopilot Ghost Lead-Turn Route & Loop-Back Styling */
+.ap-ghost-route-line {
+    stroke-dasharray: 6, 6;
+}
+.waypoint-badge-marker.loop-wp-marker {
+    background: #6f42c1 !important;
+    border-color: #ffffff !important;
+    font-size: 0.65rem !important;
+    box-shadow: 0 0 8px rgba(111, 66, 193, 0.7);
+}
+.waypoint-badge-marker.sharp-corner-marker {
+    box-shadow: 0 0 8px rgba(253, 126, 20, 0.85);
+}
+
+/* Hide waypoint indicators when toggled off to view raw art linework */
+.hide-waypoint-markers .custom-wp-icon,
+.hide-waypoint-markers .custom-wp-midpoint-icon {
+    display: none !important;
 }

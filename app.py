@@ -96,12 +96,19 @@ class SkyArtDrawing(db.Model):
     route_reversed = db.Column(db.Boolean, default=False)
     point_count = db.Column(db.Integer, default=0)
     base_points_json = db.Column(db.Text, nullable=False)
+    base_contours_json = db.Column(db.Text, nullable=True)
 
     def to_dict(self):
         try:
             pts = json.loads(self.base_points_json) if self.base_points_json else []
         except Exception:
             pts = []
+        contours = None
+        if self.base_contours_json:
+            try:
+                contours = json.loads(self.base_contours_json)
+            except Exception:
+                contours = None
         return {
             "id": self.id,
             "name": self.name,
@@ -113,6 +120,7 @@ class SkyArtDrawing(db.Model):
             "routeReversed": bool(self.route_reversed),
             "pointCount": self.point_count or len(pts),
             "basePoints": pts,
+            "baseContours": contours,
         }
 
 
@@ -148,8 +156,11 @@ with app.app_context():
                 conn.execute(text("ALTER TABLE sky_art_drawings ADD COLUMN user_id VARCHAR(100)"))
                 conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sky_art_user_id ON sky_art_drawings (user_id)"))
                 conn.commit()
+            if "base_contours_json" not in cols:
+                conn.execute(text("ALTER TABLE sky_art_drawings ADD COLUMN base_contours_json TEXT"))
+                conn.commit()
     except Exception as e:
-        app.logger.warning(f"DB user_id migration check: {e}")
+        app.logger.warning(f"DB user_id / base_contours_json migration check: {e}")
 
 
 
@@ -281,6 +292,11 @@ def api_save_sky_art_drawing():
         drawing.route_reversed = bool(data.get("routeReversed", False))
         drawing.point_count = len(base_points)
         drawing.base_points_json = json.dumps(base_points)
+        base_contours = data.get("baseContours")
+        if base_contours and isinstance(base_contours, list):
+            drawing.base_contours_json = json.dumps(base_contours)
+        else:
+            drawing.base_contours_json = None
 
         db.session.commit()
         return jsonify({"status": "success", "drawing": drawing.to_dict()})

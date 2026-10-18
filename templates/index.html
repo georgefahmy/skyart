@@ -210,37 +210,63 @@
                             <input type="file" id="artFileInput" accept=".svg,image/svg+xml,.png,image/png,.jpg,.jpeg,image/jpeg,.heic,.heif,.hif,image/heic,image/heif,image/heic-sequence,image/heif-sequence" class="d-none">
 
                             <!-- Import Mode Selector -->
-                            <div class="d-flex align-items-center gap-3 mt-2 mb-1" style="font-size: 0.75rem;">
+                            <div class="d-flex align-items-center gap-2 mt-2 mb-1 flex-wrap" style="font-size: 0.75rem;">
                                 <span class="text-muted fw-bold">Path Mode:</span>
-                                <div class="form-check form-check-inline mb-0">
-                                    <input class="form-check-input" type="radio" name="importModeRadio" id="importModeOutline" value="outline" checked>
-                                    <label class="form-check-label fw-semibold" for="importModeOutline" title="Extract outer perimeter contour only (removes internal CAD / panel lines)">
-                                        Outline Only <span class="badge bg-primary-subtle text-primary border border-primary-subtle ms-1" style="font-size: 0.65rem;">Recommended</span>
+                                <div class="form-check form-check-inline mb-0 me-2">
+                                    <input class="form-check-input" type="radio" name="importModeRadio" id="importModeSingleStroke" value="singlestroke" checked>
+                                    <label class="form-check-label fw-semibold" for="importModeSingleStroke" title="Centerline skeletonization: extracts a 1-pixel medial axis of any thickness line drawing into one continuous single-stroke flight path">
+                                        <i class="bi bi-bezier2 text-primary me-1"></i>Single Stroke
                                     </label>
                                 </div>
-                                <div class="form-check form-check-inline mb-0">
+                                <div class="form-check form-check-inline mb-0 me-2">
+                                    <input class="form-check-input" type="radio" name="importModeRadio" id="importModeLineArt" value="lineart">
+                                    <label class="form-check-label" for="importModeLineArt" title="Trace essential drawing lines and facial/subject features with separate contours and adjustable detail">
+                                        Line Art
+                                    </label>
+                                </div>
+                                <div class="form-check form-check-inline mb-0 me-2">
+                                    <input class="form-check-input" type="radio" name="importModeRadio" id="importModeOutline" value="outline">
+                                    <label class="form-check-label" for="importModeOutline" title="Extract outer perimeter contour only (removes internal features)">
+                                        Outline Only
+                                    </label>
+                                </div>
+                                <div class="form-check form-check-inline mb-0 me-0">
                                     <input class="form-check-input" type="radio" name="importModeRadio" id="importModeAllStrokes" value="strokes">
-                                    <label class="form-check-label" for="importModeAllStrokes" title="Keep internal vector linework with nearest-neighbor path stitching">
-                                        All Vector Strokes
+                                    <label class="form-check-label" for="importModeAllStrokes" title="Keep all detected vector linework and fine detail">
+                                        All Strokes
                                     </label>
                                 </div>
                             </div>
-                            <div class="form-text mt-1" style="font-size: 0.72rem;">
-                                <i class="bi bi-shield-check text-success me-1"></i><strong>Outline Only:</strong> Outer boundary silhouette. <strong>All Vector Strokes:</strong> Traces internal linework &amp; features.
+                            <div class="form-text mt-1" style="font-size: 0.72rem;" id="importModeDescription">
+                                <i class="bi bi-bezier2 text-primary me-1"></i><strong>Single Stroke Path:</strong> Extracts the 1px centerline skeleton of any line drawing regardless of line thickness and turns it into one continuous flight path.
                             </div>
 
                             <!-- Adaptive Line Detail / Threshold Slider for Photos & Sketches -->
                             <div class="mt-2 p-2 border rounded bg-light" id="importSettingsPanel">
                                 <div class="d-flex justify-content-between align-items-center mb-1">
                                     <label class="form-label small fw-bold mb-0 text-muted" for="importThresholdSlider" style="font-size: 0.73rem;">
-                                        <i class="bi bi-sliders me-1 text-primary"></i> Line Detail / Threshold:
+                                        <i class="bi bi-sliders me-1 text-primary"></i> <span id="importSliderTitle">Line Detail:</span>
                                     </label>
-                                    <span class="badge bg-secondary" id="importThresholdBadge">Medium (8)</span>
+                                    <span class="badge bg-primary" id="importThresholdBadge">Medium Detail (10)</span>
                                 </div>
-                                <input type="range" class="form-range mb-1" id="importThresholdSlider" min="3" max="22" step="1" value="8" title="Adjust line sensitivity: Lower captures finer details, Higher yields cleaner, bolder outlines">
+                                <input type="range" class="form-range mb-1" id="importThresholdSlider" min="1" max="20" step="1" value="10" title="Adjust line detail: Lower captures only major defining contours; Higher includes finer secondary features">
                                 <div class="d-flex justify-content-between text-muted" style="font-size: 0.65rem;">
-                                    <span><i class="bi bi-reception-4 me-1"></i>More Detail</span>
-                                    <span>Cleaner / Bolder<i class="bi bi-shield-check ms-1"></i></span>
+                                    <span><i class="bi bi-dash-circle me-1"></i>Fewer Lines (Cleaner)</span>
+                                    <span>More Detail<i class="bi bi-plus-circle ms-1"></i></span>
+                                </div>
+                                <!-- Enforce Max Waypoints for Import -->
+                                <div class="d-flex justify-content-between align-items-center mt-2 pt-2 border-top">
+                                    <label class="form-label small fw-bold mb-0 text-muted" for="importMaxWaypointsInput" style="font-size: 0.73rem;">
+                                        <i class="bi bi-geo-alt-fill me-1 text-primary"></i> Max Waypoints:
+                                    </label>
+                                    <div class="d-flex align-items-center gap-1">
+                                        <input type="number" id="importMaxWaypointsInput" class="form-control form-control-sm text-end py-0" style="width: 65px; font-size: 0.75rem;" value="99" min="20" max="500" step="1" title="Enforce maximum waypoints for imported path">
+                                        <select id="importMaxWaypointsPreset" class="form-select form-select-sm py-0 px-1" style="width: 82px; font-size: 0.72rem;">
+                                            <option value="50">50 pts</option>
+                                            <option value="99" selected>99 pts</option>
+                                            <option value="0">Unlimited</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -365,6 +391,29 @@
                             </div>
                         </div>
 
+                        <!-- Max Waypoints Ceiling Enforcer -->
+                        <div class="p-2 border rounded bg-light">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label class="form-label small fw-bold mb-0 text-muted" for="maxWaypointsInput" style="font-size: 0.73rem;">
+                                    <i class="bi bi-geo-alt-fill text-primary me-1"></i>Max Waypoints Limit:
+                                </label>
+                                <div class="d-flex align-items-center gap-1">
+                                    <input type="number" id="maxWaypointsInput" class="form-control form-control-sm text-end py-0" style="width: 65px; font-size: 0.75rem;" value="99" min="20" max="500" step="1" title="Enforces strict waypoint ceiling by dynamically tuning path simplification">
+                                    <select id="maxWaypointsPresetSelect" class="form-select form-select-sm py-0 px-1" style="width: 80px; font-size: 0.72rem;">
+                                        <option value="50">50 pts</option>
+                                        <option value="99" selected>99 pts</option>
+                                        <option value="0">Off</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" id="enforceMaxWaypointsCheck" checked>
+                                <label class="form-check-label text-muted" for="enforceMaxWaypointsCheck" style="font-size: 0.7rem;">
+                                    Auto-adapt algorithm to never exceed GPS limit
+                                </label>
+                            </div>
+                        </div>
+
                         <!-- Center Coordinates -->
                         <div class="row g-2">
                             <div class="col-6">
@@ -435,6 +484,89 @@
                         <div class="form-text" style="font-size: 0.72rem;">
                             <i class="bi bi-cursor-text me-1"></i> Edit departure and arrival (e.g. KLAX, KJFK).
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Autopilot Turn Radius & Corner Optimization -->
+            <div class="card border shadow-sm">
+                <div class="card-header bg-light py-2 px-3 fw-bold small text-uppercase text-muted d-flex justify-content-between align-items-center" role="button" data-bs-toggle="collapse" data-bs-target="#autopilotControlsCollapse" aria-expanded="true" aria-controls="autopilotControlsCollapse">
+                    <span><i class="bi bi-compass me-1"></i> Autopilot &amp; Turn Radius</span>
+                    <i class="bi bi-chevron-up collapse-icon"></i>
+                </div>
+                <div class="collapse show" id="autopilotControlsCollapse">
+                    <div class="card-body p-3 d-flex flex-column gap-3">
+
+                        <!-- Toggle 1: Ghost Path Preview -->
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <label class="form-check-label small fw-semibold mb-0" for="showAutopilotGhostCheck">
+                                    <i class="bi bi-eye text-warning me-1"></i> Preview Autopilot Turn Cut
+                                </label>
+                                <div class="text-muted" style="font-size: 0.7rem;">
+                                    Shows dashed path where autopilot lead turns cut corners
+                                </div>
+                            </div>
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" id="showAutopilotGhostCheck">
+                            </div>
+                        </div>
+
+                        <!-- Toggle 2: Loop-Back Generation -->
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <label class="form-check-label small fw-bold text-primary mb-0" for="enableCornerLoopBacksCheck">
+                                    <i class="bi bi-arrow-repeat me-1"></i> Sharp Corner Loop-Backs
+                                </label>
+                                <div class="text-muted" style="font-size: 0.7rem;">
+                                    Fly exterior loops on sharp turns so corners stay sharp
+                                </div>
+                            </div>
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" id="enableCornerLoopBacksCheck">
+                            </div>
+                        </div>
+
+                        <!-- Autopilot Turn Radius Slider -->
+                        <div>
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label class="form-label small fw-bold mb-0">Autopilot Turn Radius:</label>
+                                <div class="input-group input-group-sm" style="width: 105px;">
+                                    <input type="number" id="autopilotRadiusInput" class="form-control form-control-sm text-end" value="1.0" min="0.3" max="3.0" step="0.1">
+                                    <span class="input-group-text">NM</span>
+                                </div>
+                            </div>
+                            <input type="range" class="form-range mb-1" id="autopilotRadiusSlider" min="0.5" max="2.0" step="0.1" value="1.0" title="Typical RV-7 standard rate turn radius is ~1.0 NM at 150 kts">
+                            <div class="d-flex justify-content-between text-muted" style="font-size: 0.68rem;">
+                                <span>0.5 NM (Tight / Low Speed)</span>
+                                <span>1.0 NM (RV-7 @ 150 kts)</span>
+                                <span>2.0 NM (High Speed)</span>
+                            </div>
+                        </div>
+
+                        <!-- Sharpness Threshold -->
+                        <div class="d-flex justify-content-between align-items-center">
+                            <label class="form-label small text-muted mb-0">Sharp Turn Threshold:</label>
+                            <select id="autopilotMinAngleSelect" class="form-select form-select-sm" style="width: 130px; font-size: 0.78rem;">
+                                <option value="45">> 45° (All bends)</option>
+                                <option value="60" selected>> 60° (Recommended)</option>
+                                <option value="75">> 75° (Moderate)</option>
+                                <option value="90">> 90° (Right+ angles)</option>
+                                <option value="120">> 120° (Hairpin / Sharpest)</option>
+                            </select>
+                        </div>
+
+                        <!-- Status / Summary badge -->
+                        <div id="autopilotStatusBadgeContainer" class="p-2 border rounded bg-light small" style="font-size: 0.72rem;">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="text-muted fw-semibold">Corner Analysis:</span>
+                                <span class="badge bg-secondary" id="sharpCornerCountBadge">0 sharp corners</span>
+                            </div>
+                            <div id="autopilotSummaryText" class="text-muted mt-1" style="font-size: 0.7rem;">
+                                Turn on loop-backs to fly exterior circles and prevent autopilot rounding.
+                            </div>
+                        </div>
+
                     </div>
                 </div>
             </div>
@@ -512,7 +644,7 @@
                     </button>
 
                     <!-- QR Code for iPad / iPhone transfer -->
-                    <button class="btn btn-outline-dark btn-sm w-100 d-flex align-items-center justify-content-center gap-1" id="showQrBtn">
+                    <button class="btn btn-outline-secondary btn-sm w-100 d-flex align-items-center justify-content-center gap-1" id="showQrBtn">
                         <i class="bi bi-qr-code-scan"></i> QR Code
                     </button>
 
@@ -547,7 +679,7 @@
         <!-- Right Side: Interactive Leaflet Map -->
         <div class="flight-art-map-wrap">
             <div id="artMap"></div>
-            <!-- Floating Map Controls: Undo / Redo / Reverse -->
+            <!-- Floating Map Controls: Undo / Redo / Reverse / AP Cut / Loops / Waypoints Toggle -->
             <div class="map-floating-toolbar">
                 <button class="btn btn-sm btn-light border shadow-sm" id="mapUndoBtn" title="Undo (Cmd+Z / Ctrl+Z)" disabled>
                     <i class="bi bi-arrow-counterclockwise"></i>
@@ -557,6 +689,15 @@
                 </button>
                 <button class="btn btn-sm btn-light border shadow-sm" id="mapReverseBtn" title="Reverse Route Direction (e.g. Clockwise / Counter-Clockwise)">
                     <i class="bi bi-arrow-left-right me-1"></i>Reverse
+                </button>
+                <button class="btn btn-sm btn-light border shadow-sm" id="mapAutopilotGhostBtn" title="Toggle Autopilot Turn Cut Preview (Dashed Lead Turns)">
+                    <i class="bi bi-compass text-warning me-1"></i>AP Cut
+                </button>
+                <button class="btn btn-sm btn-light border shadow-sm" id="mapLoopBackBtn" title="Toggle Sharp Corner Loop-Backs (Fly exterior loops on sharp corners)">
+                    <i class="bi bi-arrow-repeat text-primary me-1"></i>Loops
+                </button>
+                <button class="btn btn-sm btn-primary text-white border shadow-sm active" id="mapToggleWaypointsBtn" title="Toggle Waypoint Indicators (Show/Hide numbered circles & loops to clearly see artwork)">
+                    <i class="bi bi-geo-alt-fill text-primary me-1"></i>Waypoints
                 </button>
             </div>
         </div>

@@ -183,8 +183,18 @@
         transitPolylineDep: null,
         transitPolylineArr: null,
         tempFreehandPolyline: null,
+        autopilotTurnRadiusNM: 1.0,
+        autopilotMinAngleDeg: 60,
+        showAutopilotGhost: false,
+        enableCornerLoopBacks: false,
+        cornerLoopOverrides: {},
+        autopilotGhostPolyline: null,
+        loopBackMarkers: [],
+        showWaypointIndicators: true,
         lastUploadedFile: null,
-        lastDecodedImage: null
+        lastDecodedImage: null,
+        maxWaypoints: 99,
+        enforceMaxWaypoints: true
     };
 
     // --- History Manager (Undo / Redo) ---
@@ -211,7 +221,12 @@
                 optimizeEntryExit: ArtState.optimizeEntryExit,
                 routeReversed: ArtState.routeReversed,
                 sourceType: ArtState.sourceType,
-                strokeCount: ArtState.strokeCount
+                strokeCount: ArtState.strokeCount,
+                autopilotTurnRadiusNM: ArtState.autopilotTurnRadiusNM,
+                autopilotMinAngleDeg: ArtState.autopilotMinAngleDeg,
+                showAutopilotGhost: ArtState.showAutopilotGhost,
+                enableCornerLoopBacks: ArtState.enableCornerLoopBacks,
+                cornerLoopOverrides: { ...ArtState.cornerLoopOverrides }
             };
         },
 
@@ -272,6 +287,11 @@
             ArtState.routeReversed = s.routeReversed ?? false;
             ArtState.sourceType = s.sourceType || 'freehand';
             ArtState.strokeCount = s.strokeCount ?? 0;
+            if (s.autopilotTurnRadiusNM !== undefined) ArtState.autopilotTurnRadiusNM = s.autopilotTurnRadiusNM;
+            if (s.autopilotMinAngleDeg !== undefined) ArtState.autopilotMinAngleDeg = s.autopilotMinAngleDeg;
+            if (s.showAutopilotGhost !== undefined) ArtState.showAutopilotGhost = !!s.showAutopilotGhost;
+            if (s.enableCornerLoopBacks !== undefined) ArtState.enableCornerLoopBacks = !!s.enableCornerLoopBacks;
+            if (s.cornerLoopOverrides !== undefined) ArtState.cornerLoopOverrides = { ...s.cornerLoopOverrides };
             updateStrokeCountBadge();
 
             syncAllControls();
@@ -386,6 +406,47 @@
         const flipVBtn = document.getElementById('flipVBtn');
         if (flipHBtn) flipHBtn.classList.toggle('active', ArtState.flipH);
         if (flipVBtn) flipVBtn.classList.toggle('active', ArtState.flipV);
+
+        // Autopilot Controls Sync
+        const ghostCheck = document.getElementById('showAutopilotGhostCheck');
+        if (ghostCheck) ghostCheck.checked = !!ArtState.showAutopilotGhost;
+
+        const loopCheck = document.getElementById('enableCornerLoopBacksCheck');
+        if (loopCheck) loopCheck.checked = !!ArtState.enableCornerLoopBacks;
+
+        const apSlider = document.getElementById('autopilotRadiusSlider');
+        if (apSlider) apSlider.value = ArtState.autopilotTurnRadiusNM;
+
+        const apInput = document.getElementById('autopilotRadiusInput');
+        if (apInput) apInput.value = ArtState.autopilotTurnRadiusNM.toFixed(1);
+
+        const angleSelect = document.getElementById('autopilotMinAngleSelect');
+        if (angleSelect) angleSelect.value = String(ArtState.autopilotMinAngleDeg);
+
+        const mapGhostBtn = document.getElementById('mapAutopilotGhostBtn');
+        if (mapGhostBtn) {
+            mapGhostBtn.classList.toggle('active', !!ArtState.showAutopilotGhost);
+            mapGhostBtn.classList.toggle('btn-warning', !!ArtState.showAutopilotGhost);
+            mapGhostBtn.classList.toggle('text-dark', !!ArtState.showAutopilotGhost);
+            mapGhostBtn.classList.toggle('btn-light', !ArtState.showAutopilotGhost);
+        }
+
+        const mapLoopBtn = document.getElementById('mapLoopBackBtn');
+        if (mapLoopBtn) {
+            mapLoopBtn.classList.toggle('active', !!ArtState.enableCornerLoopBacks);
+            mapLoopBtn.classList.toggle('btn-primary', !!ArtState.enableCornerLoopBacks);
+            mapLoopBtn.classList.toggle('text-white', !!ArtState.enableCornerLoopBacks);
+            mapLoopBtn.classList.toggle('btn-light', !ArtState.enableCornerLoopBacks);
+        }
+
+        const mapWpBtn = document.getElementById('mapToggleWaypointsBtn');
+        if (mapWpBtn) {
+            const isVisible = ArtState.showWaypointIndicators !== false;
+            mapWpBtn.classList.toggle('active', isVisible);
+            mapWpBtn.classList.toggle('btn-primary', isVisible);
+            mapWpBtn.classList.toggle('text-white', isVisible);
+            mapWpBtn.classList.toggle('btn-light', !isVisible);
+        }
     }
 
     // --- Ramer-Douglas-Peucker (RDP) Simplification ---
@@ -445,6 +506,122 @@
         return (brng + 360) % 360;
     }
 
+    function projectLatLng(lat, lon, bearingDeg, distanceNM) {
+        const R = 3440.065;
+        const dR = distanceNM / R;
+        const bRad = toRad(bearingDeg);
+        const lat1 = toRad(lat);
+        const lon1 = toRad(lon);
+
+        const lat2 = Math.asin(Math.sin(lat1) * Math.cos(dR) + Math.cos(lat1) * Math.sin(dR) * Math.cos(bRad));
+        const lon2 = lon1 + Math.atan2(
+            Math.sin(bRad) * Math.sin(dR) * Math.cos(lat1),
+            Math.cos(dR) - Math.sin(lat1) * Math.sin(lat2)
+        );
+
+        return { lat: toDeg(lat2), lon: toDeg(lon2) };
+    }
+
+    function normalizeAngleDiff(deg) {
+        let diff = (deg + 180) % 360;
+        if (diff < 0) diff += 360;
+        return diff - 180;
+    }
+
+    function analyzeCornerTurn(pPrev, pCorner, pNext, radiusNM = 1.0) {
+        const brngIn = calculateBearingDeg(pPrev.lat, pPrev.lon, pCorner.lat, pCorner.lon);
+        const brngOut = calculateBearingDeg(pCorner.lat, pCorner.lon, pNext.lat, pNext.lon);
+        const turnAngle = normalizeAngleDiff(brngOut - brngIn);
+        const rawAlpha = Math.abs(turnAngle);
+        const alpha = Math.min(172, rawAlpha);
+        const isRightTurn = turnAngle > 0;
+
+        const cosHalf = Math.max(0.05, Math.cos(toRad(alpha / 2)));
+        const dLead = radiusNM * Math.tan(toRad(alpha / 2));
+        const dCut = radiusNM * (1.0 / cosHalf - 1.0);
+
+        return {
+            brngIn,
+            brngOut,
+            turnAngle,
+            alpha: rawAlpha,
+            clampedAlpha: alpha,
+            isRightTurn,
+            dLead,
+            dCut
+        };
+    }
+
+    function generateLeadTurnArc(pPrev, pCorner, pNext, radiusNM = 1.0) {
+        const analysis = analyzeCornerTurn(pPrev, pCorner, pNext, radiusNM);
+        const { brngIn, brngOut, alpha, clampedAlpha, isRightTurn, dLead } = analysis;
+
+        if (alpha < 5 || alpha > 170) return null;
+
+        const effAlpha = clampedAlpha || Math.min(170, alpha);
+        const legInDist = calculateDistanceNM(pPrev.lat, pPrev.lon, pCorner.lat, pCorner.lon);
+        const legOutDist = calculateDistanceNM(pCorner.lat, pCorner.lon, pNext.lat, pNext.lon);
+        const effectiveLead = Math.min(dLead, legInDist * 0.45, legOutDist * 0.45);
+        const tanHalf = Math.tan(toRad(effAlpha / 2));
+        const effectiveRadius = tanHalf > 0.001 ? (effectiveLead / tanHalf) : radiusNM;
+
+        const L1 = projectLatLng(pCorner.lat, pCorner.lon, (brngIn + 180) % 360, effectiveLead);
+        const L2 = projectLatLng(pCorner.lat, pCorner.lon, brngOut, effectiveLead);
+
+        const centerBearing = isRightTurn ? (brngIn + 90) % 360 : (brngIn - 90 + 360) % 360;
+        const O = projectLatLng(L1.lat, L1.lon, centerBearing, effectiveRadius);
+
+        const angleToL1 = calculateBearingDeg(O.lat, O.lon, L1.lat, L1.lon);
+        const sweep = isRightTurn ? effAlpha : -effAlpha;
+        const arcPts = [L1];
+        const steps = 6;
+        for (let i = 1; i < steps; i++) {
+            const frac = i / steps;
+            const curA = (angleToL1 + sweep * frac + 720) % 360;
+            arcPts.push(projectLatLng(O.lat, O.lon, curA, effectiveRadius));
+        }
+        arcPts.push(L2);
+
+        return { analysis, L1, L2, arcPts, effectiveRadius, effectiveLead };
+    }
+
+    function generateCornerLoopBack(pPrev, pCorner, pNext, radiusNM = 1.0, numArcPoints = 3) {
+        const analysis = analyzeCornerTurn(pPrev, pCorner, pNext, radiusNM);
+        const { brngIn, brngOut, alpha, clampedAlpha, isRightTurn } = analysis;
+
+        // Skip loop-backs on gentle turns (< 60) or branch reversals (> 165)
+        if (alpha < 60 || alpha > 165) return null;
+
+        const effAlpha = clampedAlpha || Math.min(160, alpha);
+        const tanHalf = Math.tan(toRad(Math.min(160, effAlpha) / 2));
+        const dExt = Math.min(radiusNM * tanHalf, 1.8 * radiusNM);
+
+        const T1 = projectLatLng(pCorner.lat, pCorner.lon, brngIn, dExt);
+        const T2 = projectLatLng(pCorner.lat, pCorner.lon, (brngOut + 180) % 360, dExt);
+
+        const centerBearing = isRightTurn ? (brngIn - 90 + 360) % 360 : (brngIn + 90) % 360;
+        const O = projectLatLng(T1.lat, T1.lon, centerBearing, radiusNM);
+
+        const angleToT1 = calculateBearingDeg(O.lat, O.lon, T1.lat, T1.lon);
+        const sweep = isRightTurn ? -((360 - effAlpha)) : (360 - effAlpha);
+
+        const arcPts = [];
+        for (let i = 1; i <= numArcPoints; i++) {
+            const frac = i / (numArcPoints + 1);
+            const curA = (angleToT1 + sweep * frac + 720) % 360;
+            arcPts.push(projectLatLng(O.lat, O.lon, curA, radiusNM));
+        }
+
+        return {
+            analysis,
+            T1,
+            T2,
+            O,
+            arcPts
+        };
+    }
+
+
     // --- Smooth Wheel Zoom with Speed Ramping & Inertial Easing ---
     if (typeof L !== 'undefined' && L.Handler && !L.Map.SmoothWheelZoom) {
         L.Map.mergeOptions({
@@ -464,6 +641,7 @@
             },
 
             _onMapInterrupt: function () {
+                if (this._internalMove) return;
                 if (this._isWheeling || this._moved) {
                     clearTimeout(this._timeoutId);
                     cancelAnimationFrame(this._zoomAnimationId);
@@ -471,6 +649,9 @@
                     if (this._moved) {
                         this._moved = false;
                         this._map._moveEnd(true);
+                    }
+                    if (this._map._renderer && typeof this._map._renderer._reset === 'function') {
+                        this._map._renderer._reset();
                     }
                 }
             },
@@ -544,9 +725,14 @@
                 this._isWheeling = false;
                 cancelAnimationFrame(this._zoomAnimationId);
                 if (this._moved) {
+                    this._internalMove = true;
                     this._map._move(this._center || this._map.getCenter(), this._goalZoom);
                     this._moved = false;
                     this._map._moveEnd(true);
+                    this._internalMove = false;
+                }
+                if (this._map._renderer && typeof this._map._renderer._reset === 'function') {
+                    this._map._renderer._reset();
                 }
             },
 
@@ -565,6 +751,9 @@
                         this._moved = false;
                         map._moveEnd(true);
                     }
+                    if (map._renderer && typeof map._renderer._reset === 'function') {
+                        map._renderer._reset();
+                    }
                     return;
                 }
 
@@ -574,9 +763,14 @@
                 if (!this._isWheeling && Math.abs(diff) < 0.002) {
                     cancelAnimationFrame(this._zoomAnimationId);
                     if (this._moved) {
+                        this._internalMove = true;
                         map._move(this._center || map.getCenter(), this._goalZoom);
                         this._moved = false;
                         map._moveEnd(true);
+                        this._internalMove = false;
+                    }
+                    if (map._renderer && typeof map._renderer._reset === 'function') {
+                        map._renderer._reset();
                     }
                     return;
                 }
@@ -591,12 +785,14 @@
                     this._center = map.unproject(map.project(this._wheelMouseLatLng, this._zoom).subtract(delta), this._zoom);
                 }
 
+                this._internalMove = true;
                 if (!this._moved) {
                     map._moveStart(true, false);
                     this._moved = true;
                 }
 
                 map._move(this._center, this._zoom);
+                this._internalMove = false;
                 this._prevCenter = map.getCenter();
                 this._prevZoom = map.getZoom();
 
@@ -667,14 +863,19 @@
 
         L.control.scale({ imperial: true, metric: false, position: 'bottomleft' }).addTo(ArtState.map);
 
-        // Ensure SVG vector layers (polylines) and DOM waypoint markers stay 100% in sync on move/zoom/drag
+        // Keep vector SVG renderer and HTML markers 100% aligned across fractional zooms, pans, and window resizes
         function resyncMapRenderers() {
             if (!ArtState.map) return;
             if (ArtState.map._renderer && typeof ArtState.map._renderer._reset === 'function') {
                 ArtState.map._renderer._reset();
             }
+            ArtState.map.eachLayer(layer => {
+                if (layer._renderer && typeof layer._renderer._reset === 'function') {
+                    layer._renderer._reset();
+                }
+            });
         }
-        ArtState.map.on('moveend dragend zoomend', resyncMapRenderers);
+        ArtState.map.on('moveend dragend zoomend viewreset resize', resyncMapRenderers);
 
         // Center Pin
         createCenterMarker();
@@ -1009,44 +1210,18 @@
                 }
                 subContours.push({ isClosed: true, pts: pts });
             } else {
-                // Check if this contour contains internal closed sub-loops
-                let startIdx = 0;
-                const N = c.length;
-
-                while (startIdx < N) {
-                    const pStart = c[startIdx];
-                    let endIdx = -1;
-                    for (let j = startIdx + 2; j < N; j++) {
-                        const pj = c[j];
-                        const d = calculateDistanceNM(pStart.lat, pStart.lon, pj.lat, pj.lon);
-                        if (d <= Math.max(0.1, (ArtState.simplificationTolerance || 0.015) * 4)) {
-                            endIdx = j;
-                            break;
-                        }
-                    }
-                    if (endIdx !== -1) {
-                        subContours.push({
-                            isClosed: true,
-                            pts: c.slice(startIdx, endIdx).map(p => ({ lat: p.lat, lon: p.lon }))
-                        });
-                        startIdx = endIdx + 1;
-                    } else {
-                        subContours.push({
-                            isClosed: false,
-                            pts: c.slice(startIdx).map(p => ({ lat: p.lat, lon: p.lon }))
-                        });
-                        break;
-                    }
-                }
+                subContours.push({
+                    isClosed: false,
+                    pts: c.map(p => ({ lat: p.lat, lon: p.lon }))
+                });
             }
         });
 
         if (!shouldOptimize) {
             const res = [];
-            subContours.forEach(sc => {
-                res.push(...sc.pts);
-                if (sc.isClosed && sc.pts.length > 0) {
-                    res.push({ lat: sc.pts[0].lat, lon: sc.pts[0].lon });
+            rawContours.forEach(c => {
+                if (c && c.length > 0) {
+                    res.push(...c.map(p => ({ lat: p.lat, lon: p.lon })));
                 }
             });
             if (ArtState.routeReversed) res.reverse();
@@ -1191,30 +1366,75 @@
         const originLat = ArtState.center.lat;
         const originLon = ArtState.center.lon;
         const cosLat = Math.cos(toRad(originLat)) || 1.0;
-        const toleranceNM = ArtState.simplificationTolerance || 0.015;
+        const baseToleranceNM = ArtState.simplificationTolerance || 0.015;
 
-        function simplifyContour(rawPts) {
-            if (!rawPts || rawPts.length <= 2) return rawPts.map(p => ({ lat: p.lat, lon: p.lon }));
-            const xyPoints = rawPts.map(p => ({
-                x: (p.lon - originLon) * cosLat * 60.0, // in NM
-                y: (p.lat - originLat) * 60.0,          // in NM
-                raw: p
-            }));
-            const simplifiedXY = ramerDouglasPeucker(xyPoints, toleranceNM);
-            return simplifiedXY.map(p => ({ lat: p.raw.lat, lon: p.raw.lon }));
+        function runSimplificationWithTol(tol) {
+            function simplifyContour(rawPts) {
+                if (!rawPts || rawPts.length <= 2) return rawPts.map(p => ({ lat: p.lat, lon: p.lon }));
+                const xyPoints = rawPts.map(p => ({
+                    x: (p.lon - originLon) * cosLat * 60.0, // in NM
+                    y: (p.lat - originLat) * 60.0,          // in NM
+                    raw: p
+                }));
+                const simplifiedXY = ramerDouglasPeucker(xyPoints, tol);
+                return simplifiedXY.map(p => ({ lat: p.raw.lat, lon: p.raw.lon }));
+            }
+
+            let cList = null;
+            if (ArtState.rawProjectedContours && ArtState.rawProjectedContours.length > 0) {
+                cList = ArtState.rawProjectedContours.map(c => simplifyContour(c));
+            } else if (ArtState.rawProjectedPoints && ArtState.rawProjectedPoints.length > 0) {
+                cList = [simplifyContour(ArtState.rawProjectedPoints)];
+            } else {
+                cList = [ArtState.projectedPoints.map(p => ({ lat: p.lat, lon: p.lon }))];
+            }
+
+            return optimizeRouteWaypoints(cList);
         }
 
-        let contourList = null;
-        if (ArtState.rawProjectedContours && ArtState.rawProjectedContours.length > 0) {
-            contourList = ArtState.rawProjectedContours.map(c => simplifyContour(c));
-        } else if (ArtState.rawProjectedPoints && ArtState.rawProjectedPoints.length > 0) {
-            contourList = [simplifyContour(ArtState.rawProjectedPoints)];
-        } else {
-            contourList = [ArtState.projectedPoints.map(p => ({ lat: p.lat, lon: p.lon }))];
+        let points = runSimplificationWithTol(baseToleranceNM);
+
+        // Adaptive Max Waypoints ceiling check
+        if (ArtState.enforceMaxWaypoints && ArtState.maxWaypoints > 0) {
+            const maxWp = ArtState.maxWaypoints;
+
+            function countFullPlanWaypoints(pts) {
+                let cnt = pts.length;
+                if (ArtState.includeAirport && ArtState.depAirport) cnt++;
+                if (ArtState.includeAirport && ArtState.arrAirport) cnt++;
+                if (ArtState.enableCornerLoopBacks && pts.length >= 3) {
+                    const radius = ArtState.autopilotTurnRadiusNM || 1.0;
+                    const minAng = ArtState.autopilotMinAngleDeg || 60;
+                    for (let i = 1; i < pts.length - 1; i++) {
+                        const an = analyzeCornerTurn(pts[i - 1], pts[i], pts[i + 1], radius);
+                        const isOverridden = ArtState.cornerLoopOverrides[i] !== undefined;
+                        const shouldLoop = isOverridden ? !!ArtState.cornerLoopOverrides[i] : (an.alpha >= minAng && an.alpha <= 165);
+                        if (shouldLoop) cnt += 5; // T1 + 3 arc points + T2
+                    }
+                }
+                return cnt;
+            }
+
+            if (countFullPlanWaypoints(points) > maxWp) {
+                let lowTol = baseToleranceNM;
+                let highTol = Math.max(0.35, (ArtState.sizeNM || 12) * 0.12);
+                let bestPoints = points;
+
+                for (let iter = 0; iter < 12; iter++) {
+                    const midTol = (lowTol + highTol) / 2;
+                    const testPts = runSimplificationWithTol(midTol);
+                    const wpCount = countFullPlanWaypoints(testPts);
+                    if (wpCount > maxWp) {
+                        lowTol = midTol;
+                    } else {
+                        bestPoints = testPts;
+                        highTol = midTol;
+                    }
+                }
+                points = bestPoints;
+            }
         }
 
-        // Optimize entry/exit waypoints for connected airport
-        const points = optimizeRouteWaypoints(contourList);
         ArtState.projectedPoints = points;
 
         buildFullFlightPlan();
@@ -1223,7 +1443,7 @@
         renderWaypointTable();
     }
 
-    // --- Build Full Flight Plan with Airports ---
+    // --- Build Full Flight Plan with Airports & Corner Loop-Backs ---
     function buildFullFlightPlan() {
         const full = [];
 
@@ -1235,23 +1455,113 @@
                 type: 'AIRPORT',
                 lat: ArtState.depAirport.lat,
                 lon: ArtState.depAirport.lon,
-                isAirport: true
+                isAirport: true,
+                isLoopWaypoint: false
             });
         }
 
-        // Artwork user waypoints
-        ArtState.projectedPoints.forEach((pt, idx) => {
-            const wpId = 'WP' + String(idx + 1).padStart(2, '0');
+        const pts = ArtState.projectedPoints || [];
+        const totalPts = pts.length;
+        const isLoopClosed = totalPts >= 3 &&
+            Math.abs(pts[0].lat - pts[totalPts - 1].lat) < 0.0008 &&
+            Math.abs(pts[0].lon - pts[totalPts - 1].lon) < 0.0008;
+
+        const turnRadius = ArtState.autopilotTurnRadiusNM || 1.0;
+        const minAngle = ArtState.autopilotMinAngleDeg || 60;
+        const enableLoops = !!ArtState.enableCornerLoopBacks;
+
+        // Artwork user waypoints and loop-backs
+        for (let i = 0; i < totalPts; i++) {
+            const pt = pts[i];
+            const wpId = 'WP' + String(i + 1).padStart(2, '0');
+
+            // Add base corner waypoint
             full.push({
                 id: wpId,
-                name: `Art Pt ${idx + 1}`,
+                name: `Art Pt ${i + 1}`,
                 type: 'USER WAYPOINT',
                 lat: pt.lat,
                 lon: pt.lon,
                 isAirport: false,
-                artIndex: idx
+                isLoopWaypoint: false,
+                artIndex: i
             });
-        });
+
+            // Check if this vertex qualifies for a loop-back
+            // Loops are only generated for intermediate corners flown (not wrap-around between last and first point)
+            if (enableLoops && i > 0 && i < totalPts - 1) {
+                const pPrev = pts[i - 1];
+                const pNext = pts[i + 1];
+
+                if (pPrev && pNext) {
+                    const analysis = analyzeCornerTurn(pPrev, pt, pNext, turnRadius);
+                    const isOverridden = ArtState.cornerLoopOverrides[i] !== undefined;
+                    const shouldLoop = isOverridden ? !!ArtState.cornerLoopOverrides[i] : (analysis.alpha >= minAngle);
+
+                    if (shouldLoop) {
+                        const loop = generateCornerLoopBack(pPrev, pt, pNext, turnRadius, 3);
+                        if (!loop || !loop.T1 || !loop.T2 || isNaN(loop.T1.lat) || isNaN(loop.T1.lon)) {
+                            continue;
+                        }
+                        const loopSubId = String(i + 1).padStart(2, '0');
+
+                        // T1: Tangent Entry (along incoming heading)
+                        full.push({
+                            id: `LP${loopSubId}A`,
+                            name: `Loop ${i + 1} Entry`,
+                            type: 'USER WAYPOINT',
+                            lat: loop.T1.lat,
+                            lon: loop.T1.lon,
+                            isAirport: false,
+                            isLoopWaypoint: true,
+                            loopParentIdx: i
+                        });
+
+                        // Arc waypoints
+                        const subLetters = ['B', 'C', 'D'];
+                        loop.arcPts.forEach((arcPt, aIdx) => {
+                            if (!isNaN(arcPt.lat) && !isNaN(arcPt.lon)) {
+                                const letter = subLetters[aIdx] || String(aIdx + 1);
+                                full.push({
+                                    id: `LP${loopSubId}${letter}`,
+                                    name: `Loop ${i + 1} Arc ${aIdx + 1}`,
+                                    type: 'USER WAYPOINT',
+                                    lat: arcPt.lat,
+                                    lon: arcPt.lon,
+                                    isAirport: false,
+                                    isLoopWaypoint: true,
+                                    loopParentIdx: i
+                                });
+                            }
+                        });
+
+                        // T2: Tangent Exit (rolls out heading directly to pCorner and pNext)
+                        full.push({
+                            id: `LP${loopSubId}E`,
+                            name: `Loop ${i + 1} Exit`,
+                            type: 'USER WAYPOINT',
+                            lat: loop.T2.lat,
+                            lon: loop.T2.lon,
+                            isAirport: false,
+                            isLoopWaypoint: true,
+                            loopParentIdx: i
+                        });
+
+                        // Rollout passes through corner vertex
+                        full.push({
+                            id: `WP${loopSubId}R`,
+                            name: `Art Pt ${i + 1} Rollout`,
+                            type: 'USER WAYPOINT',
+                            lat: pt.lat,
+                            lon: pt.lon,
+                            isAirport: false,
+                            isLoopWaypoint: true,
+                            loopParentIdx: i
+                        });
+                    }
+                }
+            }
+        }
 
         // Arrival airport if enabled
         if (ArtState.includeAirport && ArtState.arrAirport) {
@@ -1261,21 +1571,115 @@
                 type: 'AIRPORT',
                 lat: ArtState.arrAirport.lat,
                 lon: ArtState.arrAirport.lon,
-                isAirport: true
+                isAirport: true,
+                isLoopWaypoint: false
             });
         }
 
         ArtState.waypoints = full;
     }
 
+
+    // --- Autopilot Lead Turn Ghost Polyline ---
+    function clearAutopilotGhost() {
+        if (ArtState.autopilotGhostPolyline && ArtState.map) {
+            ArtState.map.removeLayer(ArtState.autopilotGhostPolyline);
+        }
+        ArtState.autopilotGhostPolyline = null;
+    }
+
+    function renderAutopilotGhost() {
+        clearAutopilotGhost();
+        if (!ArtState.showAutopilotGhost || !ArtState.map) return;
+
+        // Use the active flight plan waypoints (which includes airports and loop-back waypoints if enabled)
+        const waypoints = (ArtState.waypoints && ArtState.waypoints.length >= 2)
+            ? ArtState.waypoints
+            : ArtState.projectedPoints;
+        if (!waypoints || waypoints.length < 2) return;
+
+        const totalWps = waypoints.length;
+        const turnRadius = ArtState.autopilotTurnRadiusNM || 1.0;
+        const ghostPts = [];
+
+        // Flight plan start
+        ghostPts.push([waypoints[0].lat, waypoints[0].lon]);
+
+        for (let i = 1; i < totalWps - 1; i++) {
+            const pPrev = waypoints[i - 1];
+            const pCorner = waypoints[i];
+            const pNext = waypoints[i + 1];
+
+            // If consecutive points are identical, just continue
+            const dPrev = calculateDistanceNM(pPrev.lat, pPrev.lon, pCorner.lat, pCorner.lon);
+            const dNext = calculateDistanceNM(pCorner.lat, pCorner.lon, pNext.lat, pNext.lon);
+            if (dPrev < 0.005 || dNext < 0.005) {
+                ghostPts.push([pCorner.lat, pCorner.lon]);
+                continue;
+            }
+
+            const analysis = analyzeCornerTurn(pPrev, pCorner, pNext, turnRadius);
+            if (analysis.alpha >= 12 && analysis.alpha <= 170) {
+                const lead = generateLeadTurnArc(pPrev, pCorner, pNext, turnRadius);
+                if (lead && lead.arcPts && lead.arcPts.length > 0) {
+                    lead.arcPts.forEach(pt => {
+                        if (!isNaN(pt.lat) && !isNaN(pt.lon)) {
+                            ghostPts.push([pt.lat, pt.lon]);
+                        }
+                    });
+                } else {
+                    ghostPts.push([pCorner.lat, pCorner.lon]);
+                }
+            } else {
+                ghostPts.push([pCorner.lat, pCorner.lon]);
+            }
+        }
+
+        // Flight plan end
+        ghostPts.push([waypoints[totalWps - 1].lat, waypoints[totalWps - 1].lon]);
+
+        ArtState.autopilotGhostPolyline = L.polyline(ghostPts, {
+            color: '#fd7e14',
+            weight: 3,
+            dashArray: '5, 8',
+            opacity: 0.9,
+            className: 'ap-ghost-route-line'
+        }).addTo(ArtState.map);
+
+        const tooltipMsg = ArtState.enableCornerLoopBacks
+            ? `<strong>Autopilot Track Preview</strong><br>Simulated fly-by flight path through all flight plan waypoints & loop-backs (R = ${turnRadius.toFixed(1)} NM)`
+            : `<strong>Autopilot Track Preview</strong><br>Lead-turn corner rounding (R = ${turnRadius.toFixed(1)} NM)`;
+
+        ArtState.autopilotGhostPolyline.bindTooltip(
+            tooltipMsg,
+            { sticky: true, direction: 'top' }
+        );
+    }
+
     // --- Map Rendering ---
     function clearRenderedRoute() {
-        if (ArtState.routePolyline) ArtState.map.removeLayer(ArtState.routePolyline);
-        if (ArtState.transitPolylineDep) ArtState.map.removeLayer(ArtState.transitPolylineDep);
-        if (ArtState.transitPolylineArr) ArtState.map.removeLayer(ArtState.transitPolylineArr);
-        ArtState.mapMarkers.forEach(m => ArtState.map.removeLayer(m));
+        clearAutopilotGhost();
+        if (ArtState.routePolyline && ArtState.map) {
+            ArtState.map.removeLayer(ArtState.routePolyline);
+        }
+        ArtState.routePolyline = null;
+        if (ArtState.transitPolylineDep && ArtState.map) {
+            ArtState.map.removeLayer(ArtState.transitPolylineDep);
+        }
+        ArtState.transitPolylineDep = null;
+        if (ArtState.transitPolylineArr && ArtState.map) {
+            ArtState.map.removeLayer(ArtState.transitPolylineArr);
+        }
+        ArtState.transitPolylineArr = null;
+        if (ArtState.mapMarkers) {
+            ArtState.mapMarkers.forEach(m => ArtState.map && ArtState.map.removeLayer(m));
+        }
         ArtState.mapMarkers = [];
         ArtState.midpointMarkers = [];
+        if (ArtState.loopBackMarkers) {
+            ArtState.loopBackMarkers.forEach(m => ArtState.map && ArtState.map.removeLayer(m));
+            ArtState.loopBackMarkers = [];
+        }
     }
 
     function updateMidpointMarkers() {
@@ -1289,12 +1693,42 @@
         }
     }
 
+    function syncWaypointVisibility() {
+        const mapContainer = document.getElementById('artMap');
+        if (mapContainer) {
+            const isVisible = ArtState.showWaypointIndicators !== false;
+            mapContainer.classList.toggle('hide-waypoint-markers', !isVisible);
+        }
+        const mapWpBtn = document.getElementById('mapToggleWaypointsBtn');
+        if (mapWpBtn) {
+            const isVisible = ArtState.showWaypointIndicators !== false;
+            mapWpBtn.classList.toggle('active', isVisible);
+            mapWpBtn.classList.toggle('btn-primary', isVisible);
+            mapWpBtn.classList.toggle('text-white', isVisible);
+            mapWpBtn.classList.toggle('btn-light', !isVisible);
+            mapWpBtn.title = isVisible
+                ? 'Hide Waypoint Indicators (View clean art linework)'
+                : 'Show Waypoint Indicators (Numbered circles & loop points)';
+        }
+    }
+
     function renderRouteOnMap() {
         clearRenderedRoute();
+        syncWaypointVisibility();
 
-        if (!ArtState.projectedPoints || ArtState.projectedPoints.length < 2) return;
+        if (ArtState.map && ArtState.map._renderer && typeof ArtState.map._renderer._reset === 'function') {
+            ArtState.map._renderer._reset();
+        }
 
-        const artLatLngs = ArtState.projectedPoints.map(p => [p.lat, p.lon]);
+        if (!ArtState.projectedPoints || ArtState.projectedPoints.length < 2) {
+            clearAutopilotGhost();
+            return;
+        }
+
+        const activeRoutePts = ArtState.enableCornerLoopBacks
+            ? ArtState.waypoints.filter(w => !w.isAirport)
+            : ArtState.projectedPoints;
+        const artLatLngs = activeRoutePts.map(p => [p.lat, p.lon]);
 
         // Main Sky Art Polyline
         ArtState.routePolyline = L.polyline(artLatLngs, {
@@ -1396,9 +1830,45 @@
             if (isFirst) markerClass = 'first-pt';
             else if (isLast) markerClass = 'last-pt';
 
-            const wpTooltipText = isLoopClosed && isFirst
-                ? `<strong>WP1 / WP${totalPts} (Start & Finish)</strong><br><span class="text-muted small">${pt.lat.toFixed(4)}°, ${pt.lon.toFixed(4)}°</span><br><span class="text-primary small" style="font-size:0.72rem;"><i class="bi bi-arrows-move me-1"></i>Drag to adjust corner</span><br><span class="text-danger small" style="font-size:0.72rem;"><i class="bi bi-trash3 me-1"></i>Right-click to delete</span>`
-                : `<strong>WP${idx + 1}</strong><br><span class="text-muted small">${pt.lat.toFixed(4)}°, ${pt.lon.toFixed(4)}°</span><br><span class="text-primary small" style="font-size:0.72rem;"><i class="bi bi-arrows-move me-1"></i>Drag to adjust</span><br><span class="text-danger small" style="font-size:0.72rem;"><i class="bi bi-trash3 me-1"></i>Right-click to delete</span>`;
+            // Corner turn analysis for tooltip and highlighting
+            let turnInfo = '';
+            let pPrev = null;
+            let pNext = null;
+            if (idx > 0 && idx < totalPts - 1) {
+                pPrev = ArtState.projectedPoints[idx - 1];
+                pNext = ArtState.projectedPoints[idx + 1];
+            } else if (idx === 0) {
+                if (ArtState.includeAirport && ArtState.depAirport && totalPts >= 2) {
+                    pPrev = ArtState.depAirport;
+                    pNext = ArtState.projectedPoints[1];
+                }
+            } else if (idx === totalPts - 1) {
+                if (ArtState.includeAirport && ArtState.arrAirport && totalPts >= 2) {
+                    pPrev = ArtState.projectedPoints[totalPts - 2];
+                    pNext = ArtState.arrAirport;
+                }
+            }
+
+            if (pPrev && pNext) {
+                const analysis = analyzeCornerTurn(pPrev, pt, pNext, ArtState.autopilotTurnRadiusNM);
+                const isOverridden = ArtState.cornerLoopOverrides[idx] !== undefined;
+                const loopActive = isOverridden ? !!ArtState.cornerLoopOverrides[idx] : (analysis.alpha >= ArtState.autopilotMinAngleDeg && ArtState.enableCornerLoopBacks);
+                const isSharp = analysis.alpha >= ArtState.autopilotMinAngleDeg;
+
+                if (isSharp || isOverridden) {
+                    if (isSharp) markerClass += ' sharp-corner-marker';
+                    turnInfo = `<br><span class="badge ${loopActive ? 'bg-success' : 'bg-warning text-dark'} small mt-1" style="font-size:0.7rem;"><i class="bi bi-compass me-1"></i>Turn: ${Math.round(analysis.alpha)}° | Cut: ${analysis.dCut.toFixed(2)} NM</span>` +
+                        (loopActive ? `<br><span class="text-success small" style="font-size:0.7rem;"><i class="bi bi-check-circle-fill me-1"></i>Loop-Back Active (Click marker to toggle)</span>` : `<br><span class="text-warning small" style="font-size:0.7rem;"><i class="bi bi-exclamation-triangle-fill me-1"></i>Autopilot cuts corner (Click marker to toggle)</span>`);
+                } else {
+                    turnInfo = `<br><span class="text-muted small" style="font-size:0.68rem;">Turn: ${Math.round(analysis.alpha)}° (Gentle)</span>`;
+                }
+            }
+
+            const wpTooltipText = (isLoopClosed && isFirst
+                ? `<strong>WP1 / WP${totalPts} (Start & Finish)</strong><br><span class="text-muted small">${pt.lat.toFixed(4)}°, ${pt.lon.toFixed(4)}°</span>`
+                : `<strong>WP${idx + 1}</strong><br><span class="text-muted small">${pt.lat.toFixed(4)}°, ${pt.lon.toFixed(4)}°</span>`) +
+                turnInfo +
+                `<br><span class="text-primary small" style="font-size:0.72rem;"><i class="bi bi-arrows-move me-1"></i>Drag to adjust</span><br><span class="text-danger small" style="font-size:0.72rem;"><i class="bi bi-trash3 me-1"></i>Right-click to delete</span>`;
 
             const icon = L.divIcon({
                 className: 'custom-wp-icon',
@@ -1413,6 +1883,26 @@
             }).addTo(ArtState.map);
 
             marker.bindTooltip(wpTooltipText, { direction: 'top' });
+
+            // Click corner marker to toggle loop-back override for this individual corner
+            marker.on('click', function (e) {
+                if (ArtState.drawMode) return;
+                if (pPrev && pNext) {
+                    const analysis = analyzeCornerTurn(pPrev, pt, pNext, ArtState.autopilotTurnRadiusNM);
+                    if (analysis.alpha >= ArtState.autopilotMinAngleDeg || ArtState.cornerLoopOverrides[idx] !== undefined) {
+                        L.DomEvent.stopPropagation(e);
+                        HistoryManager.pushState();
+                        const currentlyActive = ArtState.cornerLoopOverrides[idx] !== undefined
+                            ? !!ArtState.cornerLoopOverrides[idx]
+                            : (analysis.alpha >= ArtState.autopilotMinAngleDeg && ArtState.enableCornerLoopBacks);
+                        ArtState.cornerLoopOverrides[idx] = !currentlyActive;
+                        buildFullFlightPlan();
+                        renderRouteOnMap();
+                        updateStatsHUD();
+                        renderWaypointTable();
+                    }
+                }
+            });
 
             // Right-click to delete waypoint
             marker.on('contextmenu', function (e) {
@@ -1443,8 +1933,11 @@
                 renderWaypointTable();
 
                 // Update polylines
-                const updatedLatLngs = ArtState.projectedPoints.map(p => [p.lat, p.lon]);
-                ArtState.routePolyline.setLatLngs(updatedLatLngs);
+                const activePts = ArtState.enableCornerLoopBacks
+                    ? ArtState.waypoints.filter(w => !w.isAirport)
+                    : ArtState.projectedPoints;
+                ArtState.routePolyline.setLatLngs(activePts.map(p => [p.lat, p.lon]));
+
                 if (ArtState.transitPolylineDep && ArtState.projectedPoints.length > 0) {
                     ArtState.transitPolylineDep.setLatLngs([
                         [ArtState.depAirport.lat, ArtState.depAirport.lon],
@@ -1461,6 +1954,7 @@
 
                 // Keep midpoint "+" handles stuck to the lines in real-time as waypoints are dragged
                 updateMidpointMarkers();
+                renderAutopilotGhost();
             });
 
             marker.on('dragend', function (e) {
@@ -1479,13 +1973,42 @@
 
                 ArtState.baseContours = [ArtState.basePoints.slice()];
                 ArtState.rawProjectedContours = null;
-                updateMidpointMarkers();
-                renderWaypointTable();
-                updateStatsHUD();
+
+                if (ArtState.enableCornerLoopBacks) {
+                    renderRouteOnMap();
+                } else {
+                    updateMidpointMarkers();
+                    renderWaypointTable();
+                    updateStatsHUD();
+                    renderAutopilotGhost();
+                }
             });
 
             ArtState.mapMarkers.push(marker);
         });
+
+        // Loop-Back Waypoint Badges (small circular markers along exterior arcs)
+        if (ArtState.enableCornerLoopBacks && ArtState.waypoints) {
+            ArtState.waypoints.forEach(w => {
+                if (w.isLoopWaypoint && w.id.startsWith('LP')) {
+                    const isApex = w.id.endsWith('C');
+                    const lpIcon = L.divIcon({
+                        className: 'custom-wp-icon',
+                        html: `<div class="waypoint-badge-marker loop-wp-marker" style="width:18px; height:18px; line-height:16px; font-size:10px; border-radius:50%; text-align:center;">${isApex ? '⟲' : '•'}</div>`,
+                        iconSize: [18, 18],
+                        iconAnchor: [9, 9]
+                    });
+                    const lpMarker = L.marker([w.lat, w.lon], {
+                        icon: lpIcon,
+                        interactive: true,
+                        zIndexOffset: 900
+                    }).addTo(ArtState.map);
+
+                    lpMarker.bindTooltip(`<strong>${w.id}: ${w.name}</strong><br><span class="text-muted small">${w.lat.toFixed(4)}°, ${w.lon.toFixed(4)}°</span><br><span class="text-primary small" style="font-size:0.72rem;"><i class="bi bi-arrow-repeat me-1"></i>Exterior Loop Waypoint (R = ${ArtState.autopilotTurnRadiusNM.toFixed(1)} NM)</span>`, { direction: 'top' });
+                    ArtState.loopBackMarkers.push(lpMarker);
+                }
+            });
+        }
 
         // Midpoint "+" handles between consecutive waypoints for quick insertion
         ArtState.midpointMarkers = [];
@@ -1592,6 +2115,8 @@
                 ArtState.mapMarkers.push(arrMarker);
             }
         }
+
+        renderAutopilotGhost();
     }
 
     // --- Statistics & Calculations ---
@@ -1600,11 +2125,18 @@
         let artNM = 0;
         let transitNM = 0;
 
-        // Artwork legs
-        for (let i = 0; i < ArtState.projectedPoints.length - 1; i++) {
-            const p1 = ArtState.projectedPoints[i];
-            const p2 = ArtState.projectedPoints[i + 1];
-            artNM += calculateDistanceNM(p1.lat, p1.lon, p2.lat, p2.lon);
+        // Artwork legs (using full path including loop-backs if enabled)
+        if (ArtState.enableCornerLoopBacks && ArtState.waypoints && ArtState.waypoints.length > 0) {
+            const artWps = ArtState.waypoints.filter(w => !w.isAirport);
+            for (let i = 0; i < artWps.length - 1; i++) {
+                artNM += calculateDistanceNM(artWps[i].lat, artWps[i].lon, artWps[i + 1].lat, artWps[i + 1].lon);
+            }
+        } else {
+            for (let i = 0; i < ArtState.projectedPoints.length - 1; i++) {
+                const p1 = ArtState.projectedPoints[i];
+                const p2 = ArtState.projectedPoints[i + 1];
+                artNM += calculateDistanceNM(p1.lat, p1.lon, p2.lat, p2.lon);
+            }
         }
 
         // Transit legs
@@ -1642,13 +2174,66 @@
         if (elArtDist) elArtDist.innerText = artNM.toFixed(1) + ' NM';
         if (elWaypoints) {
             const count = ArtState.waypoints.length;
-            elWaypoints.innerText = count;
-            if (count > 99) {
+            if (ArtState.enforceMaxWaypoints && ArtState.maxWaypoints > 0) {
+                const max = ArtState.maxWaypoints;
+                const isOver = count > max;
+                elWaypoints.innerHTML = `${count} <span class="badge ${isOver ? 'bg-danger' : 'bg-primary'} text-white ms-1" title="Max waypoints limit: ${max}" style="font-size:0.65rem;">Max ${max}</span>`;
+            } else if (count > 99) {
                 elWaypoints.innerHTML = `${count} <span class="badge bg-warning text-dark ms-1" title="Garmin 99 waypoint limit exceeded" style="font-size:0.6rem;">>99</span>`;
+            } else {
+                elWaypoints.innerText = count;
             }
         }
         if (elETE) elETE.innerText = eteStr;
         if (elFuel) elFuel.innerText = fuelBurn.toFixed(1) + ' gal';
+
+        // Autopilot corner sharpness analysis
+        const pts = ArtState.projectedPoints || [];
+        const totalPts = pts.length;
+        const turnRadius = ArtState.autopilotTurnRadiusNM || 1.0;
+        const minAngle = ArtState.autopilotMinAngleDeg || 60;
+        let sharpCount = 0;
+        let maxCutNM = 0;
+
+        function checkCorner(pPrev, pCorner, pNext) {
+            if (!pPrev || !pCorner || !pNext) return;
+            const analysis = analyzeCornerTurn(pPrev, pCorner, pNext, turnRadius);
+            if (analysis.alpha >= minAngle) {
+                sharpCount++;
+                if (analysis.dCut > maxCutNM) maxCutNM = analysis.dCut;
+            }
+        }
+
+        // 1. Entry corner at WP 1 if coming from departure airport
+        if (ArtState.includeAirport && ArtState.depAirport && totalPts >= 2) {
+            checkCorner(ArtState.depAirport, pts[0], pts[1]);
+        }
+
+        // 2. Intermediate artwork corners
+        for (let i = 1; i < totalPts - 1; i++) {
+            checkCorner(pts[i - 1], pts[i], pts[i + 1]);
+        }
+
+        // 3. Exit corner at final point if going to arrival airport
+        if (ArtState.includeAirport && ArtState.arrAirport && totalPts >= 2) {
+            checkCorner(pts[totalPts - 2], pts[totalPts - 1], ArtState.arrAirport);
+        }
+
+        const badgeEl = document.getElementById('sharpCornerCountBadge');
+        const summaryEl = document.getElementById('autopilotSummaryText');
+        if (badgeEl) {
+            badgeEl.innerText = `${sharpCount} sharp corner${sharpCount === 1 ? '' : 's'}`;
+            badgeEl.className = sharpCount > 0 ? 'badge bg-warning text-dark' : 'badge bg-secondary';
+        }
+        if (summaryEl) {
+            if (ArtState.enableCornerLoopBacks && sharpCount > 0) {
+                summaryEl.innerHTML = `<span class="text-success fw-bold"><i class="bi bi-check-circle me-1"></i>${sharpCount} loop-back${sharpCount === 1 ? '' : 's'} active</span> (R = ${turnRadius.toFixed(1)} NM). Preserves sharp corners on flight tracks.`;
+            } else if (sharpCount > 0) {
+                summaryEl.innerHTML = `${sharpCount} sharp turn${sharpCount === 1 ? '' : 's'} (> ${minAngle}°). Autopilot cuts inside up to <strong>${maxCutNM.toFixed(2)} NM</strong>. Turn on Loop-Backs to overfly corners cleanly.`;
+            } else {
+                summaryEl.innerText = `No corners sharper than ${minAngle}°. Turn radius R = ${turnRadius.toFixed(1)} NM easily handled by autopilot.`;
+            }
+        }
     }
 
     // --- Waypoint Leg Table ---
@@ -1676,24 +2261,31 @@
                 cumDist += legDist;
             }
 
-            const badgeColor = wp.isAirport ? 'bg-success' : 'bg-primary';
+            let badgeStyle = '';
+            let badgeClass = 'bg-primary';
+            if (wp.isAirport) {
+                badgeClass = 'bg-success';
+            } else if (wp.isLoopWaypoint) {
+                badgeClass = 'text-white';
+                badgeStyle = 'style="background-color: #6f42c1;"';
+            }
 
             html += `<tr>
-                <td><span class="badge ${badgeColor}">${wp.id}</span></td>
+                <td><span class="badge ${badgeClass}" ${badgeStyle}>${wp.id}</span></td>
                 <td class="small">${wp.name}</td>
                 <td class="text-nowrap font-monospace small">${wp.lat.toFixed(4)}°, ${wp.lon.toFixed(4)}°</td>
                 <td>${i === 0 ? '--' : legDist.toFixed(1) + ' NM'}</td>
                 <td>${i === 0 ? '--' : Math.round(legBearing) + '°'}</td>
                 <td class="fw-bold">${cumDist.toFixed(1)} NM</td>
                 <td class="text-center text-nowrap">
-                    ${wp.isAirport ? '<span class="text-muted small opacity-50" title="Airport endpoint">--</span>' : `
+                    ${wp.isAirport ? '<span class="text-muted small opacity-50" title="Airport endpoint">--</span>' : (wp.isLoopWaypoint ? '<span class="text-muted small opacity-75" title="Auto-generated loop-back waypoint"><i class="bi bi-arrow-repeat text-purple"></i> Loop</span>' : `
                     ${wp.artIndex < ArtState.projectedPoints.length - 1 ? `
                     <button class="btn btn-outline-primary btn-sm py-0 px-2 me-1 insert-waypoint-leg-btn" data-art-idx="${wp.artIndex}" title="Insert waypoint between WP${wp.artIndex + 1} and WP${wp.artIndex + 2}">
                         <i class="bi bi-plus-lg"></i>
                     </button>` : ''}
                     <button class="btn btn-outline-danger btn-sm py-0 px-2 delete-waypoint-leg-btn" data-art-idx="${wp.artIndex}" title="Delete WP${wp.artIndex + 1}">
                         <i class="bi bi-trash3"></i>
-                    </button>`}
+                    </button>`)}
                 </td>
             </tr>`;
         }
@@ -2075,8 +2667,41 @@
             return;
         }
 
-        const chained = chainPathsNearestNeighbor(segments);
-        normalizeAndSetBasePoints(chained, shouldFitBounds, segments);
+        let selectedSegments = segments;
+        const mode = document.querySelector('input[name="importModeRadio"]:checked')?.value || 'lineart';
+        if (mode === 'lineart') {
+            const thresholdSlider = document.getElementById('importThresholdSlider');
+            const sliderVal = thresholdSlider ? (parseFloat(thresholdSlider.value) || 10) : 10;
+            const detailFactor = Math.max(0, Math.min(1, (sliderVal - 1) / 19.0));
+            segments.sort((a, b) => b.length - a.length);
+            const maxLen = segments[0].length;
+            const minRatio = 0.18 * Math.pow(1.0 - detailFactor, 1.7) + 0.012;
+            const minKeep = Math.max(3, maxLen * minRatio);
+            const maxSegments = Math.round(4 + detailFactor * 36);
+            selectedSegments = segments.filter(s => s.length >= minKeep).slice(0, maxSegments);
+            if (selectedSegments.length === 0) selectedSegments = [segments[0]];
+
+            const thresholdBadge = document.getElementById('importThresholdBadge');
+            if (thresholdBadge) {
+                let level = 'Medium';
+                if (sliderVal <= 4) level = 'Minimal';
+                else if (sliderVal <= 8) level = 'Clean';
+                else if (sliderVal <= 13) level = 'Medium';
+                else if (sliderVal <= 17) level = 'Detailed';
+                else level = 'Full';
+                const ptCount = selectedSegments.reduce((sum, c) => sum + c.length, 0);
+                thresholdBadge.innerText = `${level}: ${selectedSegments.length} vectors (${ptCount} pts)`;
+            }
+        } else if (mode === 'singlestroke') {
+            const thresholdBadge = document.getElementById('importThresholdBadge');
+            if (thresholdBadge) {
+                thresholdBadge.innerText = `Single Stroke (${selectedSegments.length} vectors)`;
+            }
+        }
+
+        const chained = chainPathsNearestNeighbor(selectedSegments);
+        const subContours = (mode === 'singlestroke') ? null : selectedSegments;
+        normalizeAndSetBasePoints(chained, shouldFitBounds, subContours);
     }
 
     // --- Vector SVG Parser ---
@@ -2292,6 +2917,392 @@
         return dst;
     }
 
+    // --- Single-Stroke Centerline Skeletonization (Zhang-Suen Thinning + Eulerian Graph Tour) ---
+    // Extracts the exact 1-pixel medial axis of any line drawing regardless of line thickness,
+    // and turns it into one continuous single-stroke flight path.
+    function traceSingleStrokeCenterline(imgElement, shouldFitBounds = true) {
+        try {
+            const maxDim = 600; // Constrain to 600px for instant sub-30ms thinning
+            let w = imgElement.naturalWidth || imgElement.width || 400;
+            let h = imgElement.naturalHeight || imgElement.height || 400;
+
+            if (w > maxDim || h > maxDim) {
+                if (w > h) {
+                    h = Math.round((h * maxDim) / w);
+                    w = maxDim;
+                } else {
+                    w = Math.round((w * maxDim) / h);
+                    h = maxDim;
+                }
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(imgElement, 0, 0, w, h);
+            const imgData = ctx.getImageData(0, 0, w, h).data;
+
+            // Sensitivity / threshold slider (1 to 20, default 10)
+            const thresholdSlider = document.getElementById('importThresholdSlider');
+            const sliderVal = thresholdSlider ? (parseFloat(thresholdSlider.value) || 10) : 10;
+            // Higher slider = higher threshold (captures lighter ink/pencil); Lower = only bold dark lines
+            const inkThreshold = Math.max(90, Math.min(235, Math.round(155 + (sliderVal - 10) * 6)));
+
+            // 1. Build flat binary grid: 1 = ink stroke, 0 = background
+            const totalPixels = w * h;
+            const binGrid = new Uint8Array(totalPixels);
+            let inkCount = 0;
+
+            // Suppress 3px boundary margin to eliminate any camera/screenshot crop border lines
+            const borderPad = 3;
+            for (let y = borderPad; y < h - borderPad; y++) {
+                const rowOffset = y * w;
+                for (let x = borderPad; x < w - borderPad; x++) {
+                    const idx = (rowOffset + x) * 4;
+                    const a = imgData[idx + 3];
+                    if (a < 50) continue; // transparent pixel
+                    const lum = (imgData[idx] * 299 + imgData[idx + 1] * 587 + imgData[idx + 2] * 114) / 1000;
+                    if (lum < inkThreshold) {
+                        binGrid[rowOffset + x] = 1;
+                        inkCount++;
+                    }
+                }
+            }
+
+            if (inkCount < 20) {
+                alert("No clear line artwork detected. Try moving the Line Sensitivity slider to More Detail.");
+                return;
+            }
+
+            // 2. Zhang-Suen Thinning: Reduce strokes of ANY thickness down to an exact 1-pixel medial axis
+            let changed = true;
+            let maxIters = 60;
+            while (changed && maxIters-- > 0) {
+                changed = false;
+
+                // Sub-iteration 1
+                const toDelete1 = [];
+                for (let y = 1; y < h - 1; y++) {
+                    const rowOffset = y * w;
+                    for (let x = 1; x < w - 1; x++) {
+                        const idx = rowOffset + x;
+                        if (binGrid[idx] !== 1) continue;
+
+                        const p2 = binGrid[idx - w];
+                        const p3 = binGrid[idx - w + 1];
+                        const p4 = binGrid[idx + 1];
+                        const p5 = binGrid[idx + w + 1];
+                        const p6 = binGrid[idx + w];
+                        const p7 = binGrid[idx + w - 1];
+                        const p8 = binGrid[idx - 1];
+                        const p9 = binGrid[idx - w - 1];
+
+                        const B = p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9;
+                        if (B >= 2 && B <= 6) {
+                            let A = 0;
+                            if (p2 === 0 && p3 === 1) A++;
+                            if (p3 === 0 && p4 === 1) A++;
+                            if (p4 === 0 && p5 === 1) A++;
+                            if (p5 === 0 && p6 === 1) A++;
+                            if (p6 === 0 && p7 === 1) A++;
+                            if (p7 === 0 && p8 === 1) A++;
+                            if (p8 === 0 && p9 === 1) A++;
+                            if (p9 === 0 && p2 === 1) A++;
+
+                            if (A === 1) {
+                                if (p2 * p4 * p6 === 0 && p4 * p6 * p8 === 0) {
+                                    toDelete1.push(idx);
+                                }
+                            }
+                        }
+                    }
+                }
+                if (toDelete1.length > 0) {
+                    for (let i = 0; i < toDelete1.length; i++) binGrid[toDelete1[i]] = 0;
+                    changed = true;
+                }
+
+                // Sub-iteration 2
+                const toDelete2 = [];
+                for (let y = 1; y < h - 1; y++) {
+                    const rowOffset = y * w;
+                    for (let x = 1; x < w - 1; x++) {
+                        const idx = rowOffset + x;
+                        if (binGrid[idx] !== 1) continue;
+
+                        const p2 = binGrid[idx - w];
+                        const p3 = binGrid[idx - w + 1];
+                        const p4 = binGrid[idx + 1];
+                        const p5 = binGrid[idx + w + 1];
+                        const p6 = binGrid[idx + w];
+                        const p7 = binGrid[idx + w - 1];
+                        const p8 = binGrid[idx - 1];
+                        const p9 = binGrid[idx - w - 1];
+
+                        const B = p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9;
+                        if (B >= 2 && B <= 6) {
+                            let A = 0;
+                            if (p2 === 0 && p3 === 1) A++;
+                            if (p3 === 0 && p4 === 1) A++;
+                            if (p4 === 0 && p5 === 1) A++;
+                            if (p5 === 0 && p6 === 1) A++;
+                            if (p6 === 0 && p7 === 1) A++;
+                            if (p7 === 0 && p8 === 1) A++;
+                            if (p8 === 0 && p9 === 1) A++;
+                            if (p9 === 0 && p2 === 1) A++;
+
+                            if (A === 1) {
+                                if (p2 * p4 * p8 === 0 && p2 * p6 * p8 === 0) {
+                                    toDelete2.push(idx);
+                                }
+                            }
+                        }
+                    }
+                }
+                if (toDelete2.length > 0) {
+                    for (let i = 0; i < toDelete2.length; i++) binGrid[toDelete2[i]] = 0;
+                    changed = true;
+                }
+            }
+
+            // Cleanup redundant 2x2 clumps
+            for (let y = 1; y < h - 1; y++) {
+                const rowOffset = y * w;
+                for (let x = 1; x < w - 1; x++) {
+                    const idx = rowOffset + x;
+                    if (binGrid[idx] === 1 && binGrid[idx + 1] === 1 && binGrid[idx + w] === 1 && binGrid[idx + w + 1] === 1) {
+                        binGrid[idx] = 0;
+                    }
+                }
+            }
+
+            // 3. Graph Adjacency Construction
+            const nbrOffsets = [
+                -w - 1, -w, -w + 1,
+                -1,          1,
+                 w - 1,  w,  w + 1
+            ];
+            const adj = new Map();
+            for (let y = 1; y < h - 1; y++) {
+                const rowOffset = y * w;
+                for (let x = 1; x < w - 1; x++) {
+                    const idx = rowOffset + x;
+                    if (binGrid[idx] === 1) {
+                        const nbrs = [];
+                        for (let k = 0; k < 8; k++) {
+                            const nIdx = idx + nbrOffsets[k];
+                            if (binGrid[nIdx] === 1) nbrs.push(nIdx);
+                        }
+                        adj.set(idx, nbrs);
+                    }
+                }
+            }
+
+            if (adj.size === 0) {
+                alert("Could not extract centerline from image.");
+                return;
+            }
+
+            // 4. Extract unbranched strokes between critical nodes (deg != 2)
+            // Critical nodes are endpoints (deg = 1), junctions (deg >= 3), or isolated (deg = 0)
+            const criticalNodes = [];
+            for (const [u, nbrs] of adj) {
+                if (nbrs.length !== 2) {
+                    criticalNodes.push(u);
+                }
+            }
+
+            const visitedEdges = new Set();
+            const edgeKey = (a, b) => (a < b ? `${a}_${b}` : `${b}_${a}`);
+            const rawStrokes = [];
+
+            // Minimum stroke length based on slider sensitivity (filter micro-spurs/noise)
+            const minStrokeLen = (sliderVal <= 5) ? 8 : (sliderVal <= 10 ? 6 : (sliderVal <= 15 ? 5 : 4));
+
+            // Walk paths originating from critical nodes
+            for (let c = 0; c < criticalNodes.length; c++) {
+                const startNode = criticalNodes[c];
+                const nbrs = adj.get(startNode) || [];
+                for (let i = 0; i < nbrs.length; i++) {
+                    const nxt = nbrs[i];
+                    const eKey = edgeKey(startNode, nxt);
+                    if (visitedEdges.has(eKey)) continue;
+                    visitedEdges.add(eKey);
+
+                    const stroke = [startNode, nxt];
+                    let curr = nxt;
+                    let prev = startNode;
+
+                    while (true) {
+                        const currNbrs = adj.get(curr) || [];
+                        if (currNbrs.length !== 2) break;
+                        const nextStep = (currNbrs[0] !== prev) ? currNbrs[0] : currNbrs[1];
+                        const stepKey = edgeKey(curr, nextStep);
+                        if (visitedEdges.has(stepKey)) break;
+                        visitedEdges.add(stepKey);
+                        stroke.push(nextStep);
+                        prev = curr;
+                        curr = nextStep;
+                    }
+
+                    if (stroke.length >= minStrokeLen) {
+                        rawStrokes.push(stroke);
+                    }
+                }
+            }
+
+            // Also capture isolated closed loops where every node has degree == 2 (e.g. eyes, leaves, circles)
+            for (const [u, nbrs] of adj) {
+                if (nbrs.length === 2) {
+                    for (let i = 0; i < nbrs.length; i++) {
+                        const nxt = nbrs[i];
+                        const eKey = edgeKey(u, nxt);
+                        if (!visitedEdges.has(eKey)) {
+                            visitedEdges.add(eKey);
+                            const stroke = [u, nxt];
+                            let curr = nxt;
+                            let prev = u;
+                            while (true) {
+                                const currNbrs = adj.get(curr) || [];
+                                if (currNbrs.length !== 2 || curr === u) break;
+                                const nextStep = (currNbrs[0] !== prev) ? currNbrs[0] : currNbrs[1];
+                                const stepKey = edgeKey(curr, nextStep);
+                                if (visitedEdges.has(stepKey)) break;
+                                visitedEdges.add(stepKey);
+                                stroke.push(nextStep);
+                                prev = curr;
+                                curr = nextStep;
+                            }
+                            if (stroke.length >= minStrokeLen) {
+                                rawStrokes.push(stroke);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (rawStrokes.length === 0) {
+                alert("Artwork too faint or fragmented. Try increasing the sensitivity slider.");
+                return;
+            }
+
+            // Sort strokes descending by pixel length
+            rawStrokes.sort((a, b) => b.length - a.length);
+
+            // Check active mode for stroke selection
+            const activeMode = document.querySelector('input[name="importModeRadio"]:checked')?.value || 'singlestroke';
+            let selectedStrokes = rawStrokes;
+            if (activeMode === 'lineart') {
+                // Line Art mode: dynamically keep most prominent strokes according to slider
+                const detailFactor = Math.max(0, Math.min(1, (sliderVal - 1) / 19.0));
+                const maxStrokes = Math.round(15 + detailFactor * 80);
+                selectedStrokes = rawStrokes.slice(0, maxStrokes);
+            }
+
+            // Convert to {x, y} coordinate stroke arrays
+            const strokePointArrays = selectedStrokes.map(s => s.map(idx => ({
+                x: idx % w,
+                y: Math.floor(idx / w)
+            })));
+
+            // 5. Connect all strokes into ONE continuous single stroke using Nearest-Neighbor TSP with flip
+            // Each stroke is traversed FORWARD ONCE. No backtracking down-and-back along any branch!
+            const unvisited = strokePointArrays.slice(1);
+            const chained = [...strokePointArrays[0]];
+
+            while (unvisited.length > 0) {
+                const lastPt = chained[chained.length - 1];
+                let bestDist = Infinity;
+                let bestIdx = 0;
+                let bestReverse = false;
+
+                for (let i = 0; i < unvisited.length; i++) {
+                    const s = unvisited[i];
+                    const pStart = s[0];
+                    const pEnd = s[s.length - 1];
+                    const dStart = Math.hypot(pStart.x - lastPt.x, pStart.y - lastPt.y);
+                    const dEnd = Math.hypot(pEnd.x - lastPt.x, pEnd.y - lastPt.y);
+
+                    if (dStart < bestDist) {
+                        bestDist = dStart;
+                        bestIdx = i;
+                        bestReverse = false;
+                    }
+                    if (dEnd < bestDist) {
+                        bestDist = dEnd;
+                        bestIdx = i;
+                        bestReverse = true;
+                    }
+                }
+
+                const [nextStroke] = unvisited.splice(bestIdx, 1);
+                if (bestReverse) nextStroke.reverse();
+                chained.push(...nextStroke);
+            }
+
+            // 6. Decimate waypoints: respect Max Waypoints ceiling if enforced
+            let simplified = null;
+            if (ArtState.enforceMaxWaypoints && ArtState.maxWaypoints > 0) {
+                const targetWp = ArtState.maxWaypoints;
+                let lowEps = 0.5;
+                let highEps = 35.0;
+                simplified = ramerDouglasPeucker(chained, 1.5);
+
+                for (let iter = 0; iter < 16; iter++) {
+                    const midEps = (lowEps + highEps) / 2;
+                    const testSimp = ramerDouglasPeucker(chained, midEps);
+                    if (testSimp.length > targetWp) {
+                        lowEps = midEps;
+                    } else {
+                        simplified = testSimp;
+                        highEps = midEps;
+                    }
+                }
+            } else {
+                const eps = Math.max(1.1, Math.min(3.6, 3.6 - ((sliderVal - 1) / 19.0) * 2.4));
+                simplified = ramerDouglasPeucker(chained, eps);
+            }
+
+            if (!simplified || simplified.length < 4) {
+                alert("Could not generate valid single-stroke waypoints.");
+                return;
+            }
+
+            // Clean consecutive duplicate waypoints or sub-pixel micro-jitter
+            const cleanPts = [];
+            for (let i = 0; i < simplified.length; i++) {
+                const pt = simplified[i];
+                if (cleanPts.length > 0) {
+                    const prev = cleanPts[cleanPts.length - 1];
+                    if (Math.hypot(pt.x - prev.x, pt.y - prev.y) < 0.5) continue;
+                }
+                cleanPts.push(pt);
+            }
+
+            if (cleanPts.length < 4) {
+                alert("Could not generate valid single-stroke waypoints.");
+                return;
+            }
+
+            // Keep reference to decoded image for real-time slider & max waypoint adjustments
+            ArtState.lastDecodedImage = imgElement;
+
+            // Set as base points with single open contour
+            normalizeAndSetBasePoints(cleanPts, shouldFitBounds, [cleanPts]);
+
+            // Update threshold badge
+            const thresholdBadge = document.getElementById('importThresholdBadge');
+            if (thresholdBadge) {
+                const modeName = activeMode === 'lineart' ? 'Line Art' : (activeMode === 'strokes' ? 'All Strokes' : 'Single Stroke');
+                thresholdBadge.innerText = `${modeName} (${selectedStrokes.length} strokes, ${cleanPts.length} pts)`;
+            }
+        } catch (err) {
+            console.error("Single-stroke centerline error:", err);
+            alert("Error in single-stroke tracing: " + err.message);
+        }
+    }
+
     // --- Raster Image Tracer (PNG, JPEG, HEIF): Difference-of-Gaussians & Vector Sketching ---
     // Converts transparent PNGs or photos/sketches (JPEG, HEIF) into clean vector flight paths
     function traceRasterImage(imgElement, shouldFitBounds = true) {
@@ -2299,6 +3310,13 @@
         ArtState.sourceType = 'import';
         ArtState.strokeCount = 0;
         updateStrokeCountBadge();
+
+        const activeMode = document.querySelector('input[name="importModeRadio"]:checked')?.value || 'singlestroke';
+        if (activeMode === 'singlestroke' || activeMode === 'lineart' || activeMode === 'strokes') {
+            traceSingleStrokeCenterline(imgElement, shouldFitBounds);
+            return;
+        }
+
         try {
             const maxDim = 450; // Constrain for rapid responsive tracing
             let w = imgElement.naturalWidth || imgElement.width || 300;
@@ -2361,9 +3379,21 @@
                 const b1 = boxBlur1D(lumArr, w, h, 1);
                 const b2 = boxBlur1D(lumArr, w, h, 4);
 
-                // Threshold from sensitivity slider (default 8)
+                // Threshold from sensitivity slider (default 10)
                 const thresholdSlider = document.getElementById('importThresholdSlider');
-                const threshold = thresholdSlider ? (parseFloat(thresholdSlider.value) || 8) : 8;
+                const sliderVal = thresholdSlider ? (parseFloat(thresholdSlider.value) || 10) : 10;
+                let edgeThreshold = 8;
+                const activeMode = document.querySelector('input[name="importModeRadio"]:checked')?.value || 'lineart';
+
+                if (activeMode === 'lineart') {
+                    // Smoothly adapt edge contrast threshold: lower detail = bolder edge filter (14); higher detail = finer line capture (5)
+                    const df = Math.max(0, Math.min(1, (sliderVal - 1) / 19.0));
+                    edgeThreshold = Math.max(5, Math.round(14 - df * 8));
+                } else if (activeMode === 'strokes') {
+                    edgeThreshold = Math.max(3, Math.round(18 - (sliderVal / 20.0) * 14));
+                } else {
+                    edgeThreshold = Math.max(4, sliderVal);
+                }
 
                 // Border margin suppression: zero out 8px boundary so camera/photo borders are never captured
                 const pad = 8;
@@ -2375,7 +3405,7 @@
                         }
                         const idx = y * w + x;
                         const diff = b2[idx] - b1[idx];
-                        if (diff > threshold) {
+                        if (diff > edgeThreshold) {
                             grid[y][x] = 1;
                             fgCount++;
                         }
@@ -2388,7 +3418,7 @@
                 return;
             }
 
-            const mode = document.querySelector('input[name="importModeRadio"]:checked')?.value || 'outline';
+            const mode = document.querySelector('input[name="importModeRadio"]:checked')?.value || 'lineart';
 
             if (hasTransparency && mode === 'outline') {
                 try {
@@ -2412,7 +3442,9 @@
                     });
 
                     if (outlinePts && outlinePts.length >= 4) {
-                        normalizeAndSetBasePoints(outlinePts, shouldFitBounds);
+                        normalizeAndSetBasePoints(outlinePts, shouldFitBounds, [outlinePts]);
+                        const thresholdBadge = document.getElementById('importThresholdBadge');
+                        if (thresholdBadge) thresholdBadge.innerText = `Outline (${outlinePts.length} pts)`;
                         return;
                     }
                 } catch (err) {
@@ -2501,19 +3533,59 @@
             // Sort contours by length descending
             contours.sort((a, b) => b.length - a.length);
 
+            const thresholdBadge = document.getElementById('importThresholdBadge');
+
             if (mode === 'outline') {
                 // Outline mode: take the single largest contour (subject outer silhouette)
-                normalizeAndSetBasePoints(contours[0], shouldFitBounds);
+                normalizeAndSetBasePoints(contours[0], shouldFitBounds, [contours[0]]);
+                if (thresholdBadge) {
+                    thresholdBadge.innerText = `Outline (${contours[0].length} pts)`;
+                }
                 return;
             }
 
-            // All Vector Strokes mode: keep significant contours and chain with nearest neighbor
             const maxLen = contours[0].length;
-            const minKeep = Math.max(16, maxLen * 0.02);
-            const significantContours = contours.filter(c => c.length >= minKeep).slice(0, 60);
+            const thresholdSlider = document.getElementById('importThresholdSlider');
+            const sliderVal = thresholdSlider ? (parseFloat(thresholdSlider.value) || 10) : 10;
+            let selectedContours = [];
 
-            const chained = chainPathsNearestNeighbor(significantContours);
-            normalizeAndSetBasePoints(chained, shouldFitBounds);
+            if (mode === 'lineart') {
+                // Selective Line Art mode:
+                // Smoothly controls feature line count and filters out secondary clutter/signatures based on the slider
+                const detailFactor = Math.max(0, Math.min(1, (sliderVal - 1) / 19.0)); // 0.0 to 1.0
+                const minRatio = 0.18 * Math.pow(1.0 - detailFactor, 1.7) + 0.012;
+                const minKeep = Math.max(12, maxLen * minRatio);
+                const maxContours = Math.round(4 + detailFactor * 36); // 4 to 40 contours
+
+                selectedContours = contours.filter(c => c.length >= minKeep).slice(0, maxContours);
+                if (selectedContours.length === 0) {
+                    selectedContours = [contours[0]];
+                }
+
+                if (thresholdBadge) {
+                    let level = 'Medium';
+                    if (sliderVal <= 4) level = 'Minimal';
+                    else if (sliderVal <= 8) level = 'Clean';
+                    else if (sliderVal <= 13) level = 'Medium';
+                    else if (sliderVal <= 17) level = 'Detailed';
+                    else level = 'Full';
+                    const ptCount = selectedContours.reduce((sum, c) => sum + c.length, 0);
+                    thresholdBadge.innerText = `${level}: ${selectedContours.length} lines (${ptCount} pts)`;
+                }
+            } else {
+                // All Vector Strokes mode: keep all significant contours up to 60
+                const minKeep = Math.max(14, maxLen * 0.015);
+                selectedContours = contours.filter(c => c.length >= minKeep).slice(0, 60);
+
+                if (thresholdBadge) {
+                    const ptCount = selectedContours.reduce((sum, c) => sum + c.length, 0);
+                    thresholdBadge.innerText = `All: ${selectedContours.length} lines (${ptCount} pts)`;
+                }
+            }
+
+            // Order and chain contours using nearest-neighbor TSP
+            const chained = chainPathsNearestNeighbor(selectedContours);
+            normalizeAndSetBasePoints(chained, shouldFitBounds, selectedContours);
         } catch (err) {
             console.error("Raster tracing error:", err);
             alert("Error processing image: " + err.message);
@@ -2571,7 +3643,7 @@
 
         if (shouldFitBounds && ArtState.projectedPoints.length > 0) {
             const bounds = L.latLngBounds(ArtState.projectedPoints.map(p => [p.lat, p.lon]));
-            ArtState.map.fitBounds(bounds, { padding: [50, 50] });
+            ArtState.map.fitBounds(bounds, { padding: [50, 50], animate: false });
         }
     }
 
@@ -2726,7 +3798,14 @@
             heightNM: ArtState.heightNM,
             lockAspect: ArtState.lockAspect,
             routeReversed: ArtState.routeReversed,
+            rotationDeg: ArtState.rotationDeg || 0,
+            flipH: !!ArtState.flipH,
+            flipV: !!ArtState.flipV,
+            sourceType: ArtState.sourceType || 'saved',
             basePoints: ArtState.basePoints.map(p => ({ x: p.x, y: p.y })),
+            baseContours: (ArtState.baseContours && ArtState.baseContours.length > 0)
+                ? ArtState.baseContours.map(c => c.map(p => ({ x: p.x, y: p.y })))
+                : [ArtState.basePoints.map(p => ({ x: p.x, y: p.y }))],
             pointCount: ArtState.basePoints.length
         };
 
@@ -2785,12 +3864,32 @@
             return;
         }
 
-        ArtState.sourceType = 'saved';
+        // Deactivate drawing/clicking modes if active
+        if (typeof toggleDrawMode === 'function') toggleDrawMode(false);
+        if (typeof toggleClickMode === 'function') toggleClickMode(false);
+
+        ArtState.sourceType = found.sourceType || 'saved';
         ArtState.strokeCount = 0;
         updateStrokeCountBadge();
 
         ArtState.aspectRatio = found.aspectRatio || 1.0;
         ArtState.basePoints = found.basePoints.map(p => ({ x: p.x, y: p.y }));
+
+        // Restore baseContours if present; otherwise fallback to single contour of basePoints
+        if (found.baseContours && Array.isArray(found.baseContours) && found.baseContours.length > 0) {
+            ArtState.baseContours = found.baseContours.map(c => c.map(p => ({ x: p.x, y: p.y })));
+        } else {
+            ArtState.baseContours = [ArtState.basePoints.map(p => ({ x: p.x, y: p.y }))];
+        }
+
+        // Clear stale projected contours and points
+        ArtState.rawProjectedContours = null;
+        ArtState.rawProjectedPoints = null;
+
+        // Restore rotation and flips
+        ArtState.rotationDeg = (found.rotationDeg !== undefined) ? found.rotationDeg : 0;
+        ArtState.flipH = !!found.flipH;
+        ArtState.flipV = !!found.flipV;
 
         // Restore dimensions with exact aspect ratio
         if (found.sizeNM && found.heightNM) {
@@ -2810,12 +3909,18 @@
             updateReverseButtons();
         }
 
-        syncDimensionInputs();
+        syncAllControls();
         applyTransformations();
 
         if (ArtState.projectedPoints && ArtState.projectedPoints.length > 0) {
             const bounds = L.latLngBounds(ArtState.projectedPoints.map(p => [p.lat, p.lon]));
             ArtState.map.fitBounds(bounds, { padding: [50, 50] });
+        }
+
+        // Update dropdown label to reflect the loaded drawing
+        const labelEl = document.getElementById('tabPresetsDropdownLabel');
+        if (labelEl) {
+            labelEl.innerHTML = `<i class="bi bi-bookmark-check text-primary me-2"></i><strong>${found.name || 'Saved Drawing'}</strong>`;
         }
     }
 
@@ -3231,6 +4336,8 @@
             ArtState.projectedPoints.push(newPt);
             ArtState.rawProjectedPoints = ArtState.projectedPoints.map(p => ({ lat: p.lat, lon: p.lon }));
             ArtState.basePoints = ArtState.projectedPoints.map(p => unprojectPoint(p.lat, p.lon));
+            ArtState.baseContours = [ArtState.basePoints.slice()];
+            ArtState.rawProjectedContours = null;
             buildFullFlightPlan();
             renderRouteOnMap();
             updateStatsHUD();
@@ -3954,6 +5061,77 @@
             });
         }
 
+        // Max Waypoints Limit Synchronization & Enforcer
+        function setMaxWaypoints(val, enforce) {
+            const numVal = parseInt(val, 10);
+            if (enforce !== undefined) {
+                ArtState.enforceMaxWaypoints = !!enforce;
+            }
+            if (!isNaN(numVal)) {
+                ArtState.maxWaypoints = numVal;
+            }
+
+            const importInput = document.getElementById('importMaxWaypointsInput');
+            const importPreset = document.getElementById('importMaxWaypointsPreset');
+            const spatialInput = document.getElementById('maxWaypointsInput');
+            const spatialPreset = document.getElementById('maxWaypointsPresetSelect');
+            const enforceCheck = document.getElementById('enforceMaxWaypointsCheck');
+
+            if (importInput && parseInt(importInput.value, 10) !== ArtState.maxWaypoints) {
+                importInput.value = ArtState.maxWaypoints;
+            }
+            if (spatialInput && parseInt(spatialInput.value, 10) !== ArtState.maxWaypoints) {
+                spatialInput.value = ArtState.maxWaypoints;
+            }
+
+            const presetStr = String(ArtState.maxWaypoints);
+            const validPresets = ['50', '75', '99', '150', '200', '0'];
+            if (importPreset) {
+                importPreset.value = validPresets.includes(presetStr) ? presetStr : '';
+            }
+            if (spatialPreset) {
+                spatialPreset.value = validPresets.includes(presetStr) ? presetStr : '';
+            }
+            if (enforceCheck) {
+                enforceCheck.checked = !!ArtState.enforceMaxWaypoints;
+            }
+
+            if (ArtState.lastDecodedImage) {
+                traceRasterImage(ArtState.lastDecodedImage, false);
+            } else {
+                simplifyProjectedRoute();
+            }
+        }
+
+        document.getElementById('importMaxWaypointsInput')?.addEventListener('change', (e) => {
+            setMaxWaypoints(e.target.value);
+        });
+        document.getElementById('importMaxWaypointsPreset')?.addEventListener('change', (e) => {
+            const val = parseInt(e.target.value, 10);
+            if (val === 0) {
+                setMaxWaypoints(0, false);
+            } else {
+                setMaxWaypoints(val, true);
+            }
+        });
+        document.getElementById('maxWaypointsInput')?.addEventListener('change', (e) => {
+            setMaxWaypoints(e.target.value);
+        });
+        document.getElementById('maxWaypointsPresetSelect')?.addEventListener('change', (e) => {
+            const val = parseInt(e.target.value, 10);
+            if (val === 0) {
+                setMaxWaypoints(0, false);
+            } else {
+                setMaxWaypoints(val, true);
+            }
+        });
+        document.getElementById('enforceMaxWaypointsCheck')?.addEventListener('change', (e) => {
+            ArtState.enforceMaxWaypoints = !!e.target.checked;
+            const spatialInput = document.getElementById('maxWaypointsInput');
+            const val = spatialInput ? parseInt(spatialInput.value, 10) : ArtState.maxWaypoints;
+            setMaxWaypoints(val, ArtState.enforceMaxWaypoints);
+        });
+
         // Flip buttons
         document.getElementById('flipHBtn')?.addEventListener('click', () => {
             HistoryManager.pushState();
@@ -4028,6 +5206,103 @@
         }
         document.getElementById('reverseRouteBtn')?.addEventListener('click', handleReverseRoute);
         document.getElementById('mapReverseBtn')?.addEventListener('click', handleReverseRoute);
+
+        // Autopilot Lead Turn Preview (Ghost Path) Toggles
+        function handleToggleAutopilotGhost(enabled) {
+            ArtState.showAutopilotGhost = enabled;
+            const check = document.getElementById('showAutopilotGhostCheck');
+            if (check) check.checked = ArtState.showAutopilotGhost;
+            const btn = document.getElementById('mapAutopilotGhostBtn');
+            if (btn) {
+                btn.classList.toggle('active', ArtState.showAutopilotGhost);
+                btn.classList.toggle('btn-warning', ArtState.showAutopilotGhost);
+                btn.classList.toggle('text-dark', ArtState.showAutopilotGhost);
+                btn.classList.toggle('btn-light', !ArtState.showAutopilotGhost);
+            }
+            renderAutopilotGhost();
+        }
+
+        document.getElementById('showAutopilotGhostCheck')?.addEventListener('change', (e) => {
+            handleToggleAutopilotGhost(!!e.target.checked);
+        });
+
+        document.getElementById('mapAutopilotGhostBtn')?.addEventListener('click', () => {
+            handleToggleAutopilotGhost(!ArtState.showAutopilotGhost);
+        });
+
+        // Sharp Corner Loop-Back Toggles
+        function handleToggleLoopBacks(enabled) {
+            HistoryManager.pushState();
+            ArtState.enableCornerLoopBacks = enabled;
+            const check = document.getElementById('enableCornerLoopBacksCheck');
+            if (check) check.checked = ArtState.enableCornerLoopBacks;
+            const btn = document.getElementById('mapLoopBackBtn');
+            if (btn) {
+                btn.classList.toggle('active', ArtState.enableCornerLoopBacks);
+                btn.classList.toggle('btn-primary', ArtState.enableCornerLoopBacks);
+                btn.classList.toggle('text-white', ArtState.enableCornerLoopBacks);
+                btn.classList.toggle('btn-light', !ArtState.enableCornerLoopBacks);
+            }
+            buildFullFlightPlan();
+            renderRouteOnMap();
+            updateStatsHUD();
+            renderWaypointTable();
+        }
+
+        document.getElementById('enableCornerLoopBacksCheck')?.addEventListener('change', (e) => {
+            handleToggleLoopBacks(!!e.target.checked);
+        });
+
+        document.getElementById('mapLoopBackBtn')?.addEventListener('click', () => {
+            handleToggleLoopBacks(!ArtState.enableCornerLoopBacks);
+        });
+
+        // Toggle Waypoint Indicators Button (Show/Hide numbered circles & loop markers to view art cleanly)
+        document.getElementById('mapToggleWaypointsBtn')?.addEventListener('click', () => {
+            ArtState.showWaypointIndicators = !ArtState.showWaypointIndicators;
+            syncWaypointVisibility();
+        });
+
+        // Autopilot Turn Radius Slider & Input
+        const apRadiusSlider = document.getElementById('autopilotRadiusSlider');
+        const apRadiusInput = document.getElementById('autopilotRadiusInput');
+        if (apRadiusSlider && apRadiusInput) {
+            apRadiusSlider.addEventListener('mousedown', () => HistoryManager.pushState());
+            apRadiusSlider.addEventListener('touchstart', () => HistoryManager.pushState(), { passive: true });
+            apRadiusInput.addEventListener('focus', () => HistoryManager.pushState());
+
+            apRadiusSlider.addEventListener('input', () => {
+                const val = parseFloat(apRadiusSlider.value) || 1.0;
+                ArtState.autopilotTurnRadiusNM = Math.max(0.3, Math.min(3.0, Math.round(val * 10) / 10));
+                apRadiusInput.value = ArtState.autopilotTurnRadiusNM.toFixed(1);
+                buildFullFlightPlan();
+                renderRouteOnMap();
+                updateStatsHUD();
+                renderWaypointTable();
+            });
+
+            apRadiusInput.addEventListener('change', () => {
+                const val = parseFloat(apRadiusInput.value) || 1.0;
+                ArtState.autopilotTurnRadiusNM = Math.max(0.3, Math.min(3.0, Math.round(val * 10) / 10));
+                apRadiusSlider.value = ArtState.autopilotTurnRadiusNM;
+                apRadiusInput.value = ArtState.autopilotTurnRadiusNM.toFixed(1);
+                buildFullFlightPlan();
+                renderRouteOnMap();
+                updateStatsHUD();
+                renderWaypointTable();
+            });
+        }
+
+        // Autopilot Sharp Corner Threshold Select
+        document.getElementById('autopilotMinAngleSelect')?.addEventListener('change', (e) => {
+            HistoryManager.pushState();
+            ArtState.autopilotMinAngleDeg = parseInt(e.target.value, 10) || 60;
+            buildFullFlightPlan();
+            renderRouteOnMap();
+            updateStatsHUD();
+            renderWaypointTable();
+        });
+
 
         // Drawing Mode Buttons
         document.getElementById('drawModeBtn')?.addEventListener('click', () => {
@@ -4157,6 +5432,26 @@
         // Import Mode Radio change listener (instantly reprocesses current uploaded file)
         document.querySelectorAll('input[name="importModeRadio"]').forEach(radio => {
             radio.addEventListener('change', () => {
+                const modeDesc = document.getElementById('importModeDescription');
+                const sliderTitle = document.getElementById('importSliderTitle');
+                const mode = radio.value;
+
+                if (modeDesc) {
+                    if (mode === 'singlestroke') {
+                        modeDesc.innerHTML = `<i class="bi bi-bezier2 text-primary me-1"></i><strong>Single Stroke Path:</strong> Extracts the 1px centerline skeleton of any line drawing regardless of line thickness and turns it into one continuous flight path.`;
+                        if (sliderTitle) sliderTitle.innerText = "Line Sensitivity:";
+                    } else if (mode === 'lineart') {
+                        modeDesc.innerHTML = `<i class="bi bi-magic text-primary me-1"></i><strong>Line Art:</strong> Traces essential drawing lines &amp; facial features. Adjust detail slider below to add/remove lines.`;
+                        if (sliderTitle) sliderTitle.innerText = "Line Detail:";
+                    } else if (mode === 'outline') {
+                        modeDesc.innerHTML = `<i class="bi bi-bounding-box text-primary me-1"></i><strong>Outline Only:</strong> Outer boundary silhouette only (ideal for solid logos & aircraft).`;
+                        if (sliderTitle) sliderTitle.innerText = "Edge Threshold:";
+                    } else {
+                        modeDesc.innerHTML = `<i class="bi bi-bezier2 text-primary me-1"></i><strong>All Strokes:</strong> Traces every detected line, texture, and stroke in the image.`;
+                        if (sliderTitle) sliderTitle.innerText = "Stroke Detail:";
+                    }
+                }
+
                 if (ArtState.lastDecodedImage) {
                     traceRasterImage(ArtState.lastDecodedImage, false);
                 } else if (ArtState.lastUploadedFile) {
@@ -4165,20 +5460,14 @@
             });
         });
 
-        // Import Threshold Slider listener (live detail tuning for photos and sketches)
+        // Import Threshold Slider listener (live detail tuning for photos, sketches & line art)
         const thresholdSlider = document.getElementById('importThresholdSlider');
-        const thresholdBadge = document.getElementById('importThresholdBadge');
         if (thresholdSlider) {
             const updateThreshold = () => {
-                const val = parseInt(thresholdSlider.value, 10) || 8;
-                if (thresholdBadge) {
-                    let label = `Medium (${val})`;
-                    if (val <= 5) label = `Fine (${val})`;
-                    else if (val >= 12) label = `Bold (${val})`;
-                    thresholdBadge.innerText = label;
-                }
                 if (ArtState.lastDecodedImage) {
                     traceRasterImage(ArtState.lastDecodedImage, false);
+                } else if (ArtState.lastUploadedFile) {
+                    handleUploadedFile(ArtState.lastUploadedFile, false);
                 }
             };
             thresholdSlider.addEventListener('input', updateThreshold);
@@ -4318,8 +5607,11 @@
         if (isRaster) {
             const isOpaquePhoto = !name.endsWith('.png') && file.type !== 'image/png';
             if (isOpaquePhoto) {
-                const strokesRadio = document.getElementById('importModeAllStrokes');
-                if (strokesRadio) strokesRadio.checked = true;
+                const currentMode = document.querySelector('input[name="importModeRadio"]:checked')?.value;
+                if (!currentMode) {
+                    const singleStrokeRadio = document.getElementById('importModeSingleStroke');
+                    if (singleStrokeRadio) singleStrokeRadio.checked = true;
+                }
             }
 
             const reader = new FileReader();
