@@ -549,6 +549,12 @@ def api_sky_art_export_kml():
         return jsonify({"error": str(e)}), 400
 
 
+@app.route("/favicon.ico")
+def favicon():
+    """Serves the SkyArt vector favicon."""
+    return app.send_static_file("favicon.svg")
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5005))
     debug = os.environ.get("FLASK_DEBUG", "True").lower() in ("true", "1", "yes")
