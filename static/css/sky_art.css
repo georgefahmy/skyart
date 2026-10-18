@@ -359,12 +359,25 @@ body.dark-mode .saved-drawing-row:hover {
     opacity: 0.88;
 }
 
+/* Search & Home Airport Controls */
+#topAirportSearchContainer {
+    position: relative;
+    z-index: 1050;
+}
+#topAirportSearchContainer .dropdown {
+    position: relative;
+    z-index: 1052;
+}
+#topAirportSearchContainer .dropdown-menu {
+    z-index: 1055 !important;
+}
+
 /* Tabs & Save Single-line alignment */
 #artModeTabsHeader {
     white-space: nowrap;
     overflow: visible !important;
     position: relative;
-    z-index: 1055 !important;
+    z-index: 10 !important;
 }
 #artModeTabsHeader .nav-link {
     white-space: nowrap;

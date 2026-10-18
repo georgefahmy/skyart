@@ -80,17 +80,17 @@
         <div class="flight-art-sidebar p-3 d-flex flex-column gap-3">
 
             <!-- Search & Home Airport Controls -->
-            <div class="position-relative">
+            <div class="position-relative" id="topAirportSearchContainer" style="position: relative; z-index: 1050;">
                 <div class="d-flex justify-content-between align-items-center mb-1">
                     <label class="form-label small fw-bold text-uppercase text-muted mb-0">
                         <i class="bi bi-geo-alt-fill text-danger me-1"></i> Airport Search
                     </label>
-                    <div class="dropdown">
+                    <div class="dropdown" style="position: relative; z-index: 1052;">
                         <button class="btn btn-outline-primary btn-sm py-0 px-2 dropdown-toggle d-flex align-items-center gap-1" type="button" id="topHomeAirportBtn" data-bs-toggle="dropdown" aria-expanded="false" title="Your configured Home Airport">
                             <i class="bi bi-house-door-fill text-primary"></i>
                             <span class="small fw-bold" id="topHomeAirportBadge">E16</span>
                         </button>
-                        <ul class="dropdown-menu dropdown-menu-end shadow-sm p-2" aria-labelledby="topHomeAirportBtn" style="min-width: 230px; font-size: 0.82rem;">
+                        <ul class="dropdown-menu dropdown-menu-end shadow p-2" id="topHomeAirportMenu" aria-labelledby="topHomeAirportBtn" style="min-width: 230px; font-size: 0.82rem; z-index: 1055 !important;">
                             <li class="px-2 py-1">
                                 <div class="text-uppercase text-muted fw-bold" style="font-size: 0.68rem; letter-spacing: 0.5px;">Current Home Base</div>
                                 <div class="fw-bold fs-6 text-primary mt-1" id="topHomeDropdownIcao">E16</div>
@@ -139,7 +139,7 @@
 
             <!-- Creation Mode Tabs -->
             <div class="card border shadow-sm" style="overflow: visible;">
-                <div class="card-header bg-light p-2 d-flex align-items-center gap-1 flex-nowrap" id="artModeTabsHeader" style="position: relative; z-index: 1055; overflow: visible;">
+                <div class="card-header bg-light p-2 d-flex align-items-center gap-1 flex-nowrap" id="artModeTabsHeader" style="position: relative; z-index: 10; overflow: visible;">
                     <ul class="nav nav-pills small flex-grow-1 flex-nowrap gap-1 mb-0" id="artModeTabs" role="tablist">
                         <li class="nav-item flex-fill" role="presentation">
                             <button class="nav-link active py-1 px-2 text-center text-nowrap" id="presets-tab" data-bs-toggle="pill" data-bs-target="#tabPresets" type="button" role="tab">
