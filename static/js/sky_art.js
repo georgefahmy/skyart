@@ -537,8 +537,30 @@
         const isRightTurn = turnAngle > 0;
 
         const cosHalf = Math.max(0.05, Math.cos(toRad(alpha / 2)));
-        const dLead = radiusNM * Math.tan(toRad(alpha / 2));
+        const tanHalf = Math.tan(toRad(alpha / 2));
+        const dLead = radiusNM * tanHalf;
         const dCut = radiusNM * (1.0 / cosHalf - 1.0);
+
+        // Clamping by connected leg lengths
+        let effectiveLead = dLead;
+        let effectiveRadius = radiusNM;
+        let effectiveCut = dCut;
+        let isClamped = false;
+        let maxAllowedLead = Infinity;
+
+        if (pPrev && pCorner && pNext) {
+            const legIn = calculateDistanceNM(pPrev.lat, pPrev.lon, pCorner.lat, pCorner.lon);
+            const legOut = calculateDistanceNM(pCorner.lat, pCorner.lon, pNext.lat, pNext.lon);
+            if (legIn > 0 && legOut > 0) {
+                maxAllowedLead = Math.min(legIn * 0.45, legOut * 0.45);
+                if (dLead > maxAllowedLead) {
+                    isClamped = true;
+                    effectiveLead = maxAllowedLead;
+                    effectiveRadius = tanHalf > 0.001 ? (effectiveLead / tanHalf) : radiusNM;
+                    effectiveCut = effectiveRadius * (1.0 / cosHalf - 1.0);
+                }
+            }
+        }
 
         return {
             brngIn,
@@ -548,22 +570,22 @@
             clampedAlpha: alpha,
             isRightTurn,
             dLead,
-            dCut
+            dCut,
+            effectiveLead,
+            effectiveRadius,
+            effectiveCut,
+            isClamped,
+            maxAllowedLead
         };
     }
 
     function generateLeadTurnArc(pPrev, pCorner, pNext, radiusNM = 1.0) {
         const analysis = analyzeCornerTurn(pPrev, pCorner, pNext, radiusNM);
-        const { brngIn, brngOut, alpha, clampedAlpha, isRightTurn, dLead } = analysis;
+        const { brngIn, brngOut, alpha, clampedAlpha, isRightTurn, effectiveLead, effectiveRadius } = analysis;
 
         if (alpha < 5 || alpha > 170) return null;
 
         const effAlpha = clampedAlpha || Math.min(170, alpha);
-        const legInDist = calculateDistanceNM(pPrev.lat, pPrev.lon, pCorner.lat, pCorner.lon);
-        const legOutDist = calculateDistanceNM(pCorner.lat, pCorner.lon, pNext.lat, pNext.lon);
-        const effectiveLead = Math.min(dLead, legInDist * 0.45, legOutDist * 0.45);
-        const tanHalf = Math.tan(toRad(effAlpha / 2));
-        const effectiveRadius = tanHalf > 0.001 ? (effectiveLead / tanHalf) : radiusNM;
 
         const L1 = projectLatLng(pCorner.lat, pCorner.lon, (brngIn + 180) % 360, effectiveLead);
         const L2 = projectLatLng(pCorner.lat, pCorner.lon, brngOut, effectiveLead);
@@ -1859,7 +1881,14 @@
             const pPrev = activeRoutePts[bestIdx - 1];
             const a1 = analyzeCornerTurn(pPrev, p1, p2, ArtState.autopilotTurnRadiusNM);
             if (a1.alpha >= 12) {
-                cut1Info = { id: id1, alpha: Math.round(a1.alpha), dCut: a1.dCut, dLead: a1.dLead };
+                cut1Info = {
+                    id: id1,
+                    alpha: Math.round(a1.alpha),
+                    dCut: a1.effectiveCut !== undefined ? a1.effectiveCut : a1.dCut,
+                    nominalCut: a1.dCut,
+                    isClamped: !!a1.isClamped,
+                    effectiveRadius: a1.effectiveRadius || ArtState.autopilotTurnRadiusNM || 1.0
+                };
             }
         }
 
@@ -1869,7 +1898,14 @@
             const pNext = activeRoutePts[bestIdx + 2];
             const a2 = analyzeCornerTurn(p1, p2, pNext, ArtState.autopilotTurnRadiusNM);
             if (a2.alpha >= 12) {
-                cut2Info = { id: id2, alpha: Math.round(a2.alpha), dCut: a2.dCut, dLead: a2.dLead };
+                cut2Info = {
+                    id: id2,
+                    alpha: Math.round(a2.alpha),
+                    dCut: a2.effectiveCut !== undefined ? a2.effectiveCut : a2.dCut,
+                    nominalCut: a2.dCut,
+                    isClamped: !!a2.isClamped,
+                    effectiveRadius: a2.effectiveRadius || ArtState.autopilotTurnRadiusNM || 1.0
+                };
             }
         }
 
@@ -1899,12 +1935,14 @@
 
         if (ArtState.showAutopilotGhost && (leg.cut1Info || leg.cut2Info)) {
             const cuts = [];
-            if (leg.cut1Info) {
-                cuts.push(`${leg.cut1Info.id}: -${leg.cut1Info.dCut.toFixed(2)} NM (${leg.cut1Info.alpha}°)`);
-            }
-            if (leg.cut2Info) {
-                cuts.push(`${leg.cut2Info.id}: -${leg.cut2Info.dCut.toFixed(2)} NM (${leg.cut2Info.alpha}°)`);
-            }
+            [leg.cut1Info, leg.cut2Info].forEach(c => {
+                if (!c) return;
+                let cStr = `${c.id}: -${c.dCut.toFixed(2)} NM (${c.alpha}°)`;
+                if (c.isClamped) {
+                    cStr += ` <span class="badge bg-secondary" style="font-size:0.60rem; font-weight:normal;" title="Turn radius scaled to ${c.effectiveRadius.toFixed(1)} NM to fit short leg (Nominal: -${c.nominalCut.toFixed(2)} NM at R=${(ArtState.autopilotTurnRadiusNM || 1).toFixed(1)} NM)">clamped</span>`;
+                }
+                cuts.push(cStr);
+            });
             html += `<div class="text-warning small mt-1" style="font-size: 0.72rem; font-weight: 600;">`;
             html += `<i class="bi bi-bezier2 me-1"></i>AP Cutoff: ${cuts.join(' · ')}`;
             html += `</div>`;
@@ -2120,18 +2158,22 @@
                 const loopActive = isOverridden ? !!ArtState.cornerLoopOverrides[idx] : (analysis.alpha >= ArtState.autopilotMinAngleDeg && ArtState.enableCornerLoopBacks);
                 const isSharp = analysis.alpha >= ArtState.autopilotMinAngleDeg;
 
+                const cutDistToDisplay = analysis.effectiveCut !== undefined ? analysis.effectiveCut : analysis.dCut;
+                const cutBadgeText = analysis.isClamped
+                    ? `Turn: ${Math.round(analysis.alpha)}° | Cut: ${cutDistToDisplay.toFixed(2)} NM (Clamped R=${analysis.effectiveRadius.toFixed(1)} NM)`
+                    : `Turn: ${Math.round(analysis.alpha)}° | Cut: ${cutDistToDisplay.toFixed(2)} NM`;
+
                 if (isSharp || isOverridden) {
                     if (isSharp) markerClass += ' sharp-corner-marker';
-                    turnInfo = `<div class="mt-1"><span class="badge ${loopActive ? 'bg-success' : 'bg-warning text-dark'} small" style="font-size:0.7rem;"><i class="bi bi-compass me-1"></i>Turn: ${Math.round(analysis.alpha)}° | Cut: ${analysis.dCut.toFixed(2)} NM</span></div>` +
+                    turnInfo = `<div class="mt-1"><span class="badge ${loopActive ? 'bg-success' : 'bg-warning text-dark'} small" style="font-size:0.7rem;"><i class="bi bi-compass me-1"></i>${cutBadgeText}</span></div>` +
                         (loopActive ? `<div class="text-success small" style="font-size:0.7rem;"><i class="bi bi-check-circle-fill me-1"></i>Loop-Back Active (Click marker to toggle)</div>` : `<div class="text-warning small" style="font-size:0.7rem;"><i class="bi bi-exclamation-triangle-fill me-1"></i>Autopilot cuts corner (Click marker to toggle)</div>`);
                 } else {
                     turnInfo = `<div class="text-muted small mt-1" style="font-size:0.68rem;">Turn: ${Math.round(analysis.alpha)}° (Gentle)</div>`;
                 }
 
                 if (legInDist !== null && legOutDist !== null && !loopActive) {
-                    const minLeg = Math.min(legInDist, legOutDist);
-                    if (analysis.dLead > minLeg) {
-                        legWarning = `<div class="text-danger small mt-1" style="font-size:0.7rem; font-weight:600;"><i class="bi bi-exclamation-octagon-fill me-1"></i>AP lead (${analysis.dLead.toFixed(2)} NM) exceeds leg length!</div>`;
+                    if (analysis.isClamped) {
+                        legWarning = `<div class="text-warning small mt-1" style="font-size:0.7rem;"><i class="bi bi-info-circle me-1"></i>Unconstrained AP lead (${analysis.dLead.toFixed(2)} NM) exceeds leg length. Turn radius clamped to ${analysis.effectiveRadius.toFixed(2)} NM to fit.</div>`;
                     }
                 }
             }
