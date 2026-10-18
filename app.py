@@ -13,6 +13,9 @@ from datetime import datetime, timezone
 from flask import Flask, jsonify, make_response, render_template, request
 from flask_sqlalchemy import SQLAlchemy
 
+import re
+import uuid
+
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
 os.makedirs(INSTANCE_DIR, exist_ok=True)
@@ -28,11 +31,62 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
+USER_COOKIE_NAME = "skyart_uid"
+
+
+def sanitize_user_id(uid):
+    if not uid or not isinstance(uid, str):
+        return None
+    uid = uid.strip()
+    if 4 <= len(uid) <= 100 and re.match(r"^[a-zA-Z0-9_-]+$", uid):
+        return uid
+    return None
+
+
+def get_or_create_user_id():
+    # 1. Custom header from frontend (localStorage sync)
+    uid = sanitize_user_id(request.headers.get("X-User-ID"))
+    if uid:
+        return uid, False
+
+    # 2. Browser cookie
+    uid = sanitize_user_id(request.cookies.get(USER_COOKIE_NAME))
+    if uid:
+        return uid, False
+
+    # 3. Generate a new persistent user instance ID
+    new_uid = f"usr_{uuid.uuid4().hex}"
+    return new_uid, True
+
+
+@app.before_request
+def identify_user_instance():
+    uid, is_new = get_or_create_user_id()
+    request._skyart_user_id = uid
+    request._skyart_user_id_is_new = is_new
+
+
+@app.after_request
+def persist_user_cookie(response):
+    uid = getattr(request, "_skyart_user_id", None)
+    is_new = getattr(request, "_skyart_user_id_is_new", False)
+    if uid and (is_new or USER_COOKIE_NAME not in request.cookies):
+        response.set_cookie(
+            USER_COOKIE_NAME,
+            uid,
+            max_age=315360000,  # 10 years persistence
+            httponly=False,     # Allow frontend JS to read for localStorage fallback
+            samesite="Lax",
+            secure=request.is_secure,
+        )
+    return response
+
 
 class SkyArtDrawing(db.Model):
     __tablename__ = "sky_art_drawings"
 
     id = db.Column(db.String(100), primary_key=True)
+    user_id = db.Column(db.String(100), index=True, nullable=True)
     name = db.Column(db.String(100), nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     aspect_ratio = db.Column(db.Float, default=1.0)
@@ -64,6 +118,18 @@ class SkyArtDrawing(db.Model):
 
 with app.app_context():
     db.create_all()
+    try:
+        from sqlalchemy import text
+        with db.engine.connect() as conn:
+            res = conn.execute(text("PRAGMA table_info(sky_art_drawings)")).fetchall()
+            cols = [r[1] for r in res]
+            if "user_id" not in cols:
+                conn.execute(text("ALTER TABLE sky_art_drawings ADD COLUMN user_id VARCHAR(100)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sky_art_user_id ON sky_art_drawings (user_id)"))
+                conn.commit()
+    except Exception as e:
+        app.logger.warning(f"DB user_id migration check: {e}")
+
 
 
 # --- Airport Search Service ---
@@ -139,9 +205,17 @@ def api_airports_search():
 @app.route("/api/sky_art/drawings", methods=["GET"])
 @app.route("/api/flight_art/drawings", methods=["GET"])
 def api_get_sky_art_drawings():
-    """Retrieve all saved Sky Art drawings."""
+    """Retrieve all saved Sky Art drawings for the current user instance."""
     try:
-        drawings = SkyArtDrawing.query.order_by(SkyArtDrawing.created_at.desc()).all()
+        uid = getattr(request, "_skyart_user_id", None)
+        if not uid:
+            return jsonify([])
+        drawings = (
+            SkyArtDrawing.query
+            .filter_by(user_id=uid)
+            .order_by(SkyArtDrawing.created_at.desc())
+            .all()
+        )
         return jsonify([d.to_dict() for d in drawings])
     except Exception as e:
         app.logger.error(f"Error fetching sky art drawings: {e}")
@@ -151,8 +225,12 @@ def api_get_sky_art_drawings():
 @app.route("/api/sky_art/drawings", methods=["POST"])
 @app.route("/api/flight_art/drawings", methods=["POST"])
 def api_save_sky_art_drawing():
-    """Save or update a Sky Art drawing."""
+    """Save or update a Sky Art drawing for the current user instance."""
     try:
+        uid = getattr(request, "_skyart_user_id", None)
+        if not uid:
+            return jsonify({"status": "error", "message": "Missing user instance identification"}), 400
+
         data = request.get_json(silent=True) or {}
         name = (data.get("name") or "").strip()
         if not name:
@@ -168,10 +246,13 @@ def api_save_sky_art_drawing():
 
         drawing = db.session.get(SkyArtDrawing, drawing_id)
         if not drawing:
-            drawing = SkyArtDrawing(id=drawing_id)
+            drawing = SkyArtDrawing(id=drawing_id, user_id=uid)
             db.session.add(drawing)
+        elif drawing.user_id and drawing.user_id != uid:
+            return jsonify({"status": "error", "message": "Unauthorized"}), 403
 
         drawing.name = name
+        drawing.user_id = uid
         drawing.aspect_ratio = float(data.get("aspectRatio") or 1.0)
         drawing.size_nm = float(data.get("sizeNM") or 12.0)
         drawing.height_nm = float(data.get("heightNM") or 12.0)
@@ -191,10 +272,13 @@ def api_save_sky_art_drawing():
 @app.route("/api/sky_art/drawings/<drawing_id>", methods=["DELETE", "POST"])
 @app.route("/api/flight_art/drawings/<drawing_id>", methods=["DELETE", "POST"])
 def api_delete_sky_art_drawing(drawing_id):
-    """Delete a saved Sky Art drawing."""
+    """Delete a saved Sky Art drawing for the current user instance."""
     try:
+        uid = getattr(request, "_skyart_user_id", None)
         drawing = db.session.get(SkyArtDrawing, drawing_id)
         if drawing:
+            if drawing.user_id and drawing.user_id != uid:
+                return jsonify({"status": "error", "message": "Unauthorized"}), 403
             db.session.delete(drawing)
             db.session.commit()
             return jsonify({"status": "success"})

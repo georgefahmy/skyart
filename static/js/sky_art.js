@@ -2385,16 +2385,60 @@
         }
     }
 
+    // --- User Instance Identification ---
+    const USER_ID_STORAGE_KEY = 'sky_art_user_instance_id';
+
+    function getUserInstanceId() {
+        let uid = null;
+        try {
+            uid = localStorage.getItem(USER_ID_STORAGE_KEY);
+        } catch (e) {}
+
+        if (!uid) {
+            const match = document.cookie.match(/(?:^|;\s*)skyart_uid=([^;]+)/);
+            if (match && match[1]) {
+                uid = decodeURIComponent(match[1]);
+            } else {
+                uid = 'usr_' + (window.crypto && crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : (Date.now().toString(36) + Math.random().toString(36).substring(2)));
+            }
+            try {
+                localStorage.setItem(USER_ID_STORAGE_KEY, uid);
+            } catch (e) {}
+        }
+        return uid;
+    }
+
+    function getApiHeaders(extra = {}) {
+        return {
+            'X-User-ID': getUserInstanceId(),
+            ...extra
+        };
+    }
+
     // --- Saved Custom Drawings / Presets Management ---
     const SAVED_DRAWINGS_STORAGE_KEY = 'sky_art_saved_drawings';
     const LEGACY_SAVED_DRAWINGS_STORAGE_KEY = 'flight_art_saved_drawings';
+
+    function getUserStorageKey() {
+        return SAVED_DRAWINGS_STORAGE_KEY + '_' + getUserInstanceId();
+    }
 
     let inMemorySavedDrawings = null;
 
     function getSavedDrawings() {
         if (inMemorySavedDrawings !== null) return inMemorySavedDrawings;
         try {
-            const raw = localStorage.getItem(SAVED_DRAWINGS_STORAGE_KEY) || localStorage.getItem(LEGACY_SAVED_DRAWINGS_STORAGE_KEY);
+            const userKey = getUserStorageKey();
+            let raw = localStorage.getItem(userKey);
+            if (!raw) {
+                // Check if user previously saved under global key
+                raw = localStorage.getItem(SAVED_DRAWINGS_STORAGE_KEY) || localStorage.getItem(LEGACY_SAVED_DRAWINGS_STORAGE_KEY);
+                if (raw) {
+                    localStorage.setItem(userKey, raw);
+                    localStorage.removeItem(SAVED_DRAWINGS_STORAGE_KEY);
+                    localStorage.removeItem(LEGACY_SAVED_DRAWINGS_STORAGE_KEY);
+                }
+            }
             inMemorySavedDrawings = raw ? JSON.parse(raw) : [];
         } catch (err) {
             console.error("Error loading saved drawings from localStorage:", err);
@@ -2405,7 +2449,9 @@
 
     async function syncSavedDrawingsWithServer() {
         try {
-            const res = await fetch('/api/sky_art/drawings');
+            const res = await fetch('/api/sky_art/drawings', {
+                headers: getApiHeaders()
+            });
             if (res.ok) {
                 const serverDrawings = await res.json();
                 const localDrawings = getSavedDrawings();
@@ -2420,7 +2466,7 @@
                         mergedMap.set(localD.id, localD);
                         fetch('/api/sky_art/drawings', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: getApiHeaders({ 'Content-Type': 'application/json' }),
                             body: JSON.stringify(localD)
                         }).catch(e => console.warn("Background upload error:", e));
                     }
@@ -2430,7 +2476,7 @@
                 inMemorySavedDrawings.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
                 try {
-                    localStorage.setItem(SAVED_DRAWINGS_STORAGE_KEY, JSON.stringify(inMemorySavedDrawings));
+                    localStorage.setItem(getUserStorageKey(), JSON.stringify(inMemorySavedDrawings));
                 } catch (e) {}
 
                 renderSavedDrawingsDropdown();
@@ -2464,7 +2510,7 @@
         drawings.unshift(newDrawing); // Newest at top
         inMemorySavedDrawings = drawings;
         try {
-            localStorage.setItem(SAVED_DRAWINGS_STORAGE_KEY, JSON.stringify(drawings));
+            localStorage.setItem(getUserStorageKey(), JSON.stringify(drawings));
         } catch (err) {
             console.error("Error saving drawing to localStorage:", err);
             alert("Could not save drawing to browser storage.");
@@ -2476,7 +2522,7 @@
         // Also persist to server database
         fetch('/api/sky_art/drawings', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getApiHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify(newDrawing)
         }).then(res => {
             if (!res.ok) console.warn("Server save returned non-OK status");
@@ -2492,7 +2538,7 @@
         drawings = drawings.filter(d => d.id !== id);
         inMemorySavedDrawings = drawings;
         try {
-            localStorage.setItem(SAVED_DRAWINGS_STORAGE_KEY, JSON.stringify(drawings));
+            localStorage.setItem(getUserStorageKey(), JSON.stringify(drawings));
         } catch (err) {
             console.error("Error updating saved drawings:", err);
         }
@@ -2500,7 +2546,8 @@
 
         // Also delete from server database
         fetch('/api/sky_art/drawings/' + encodeURIComponent(id), {
-            method: 'DELETE'
+            method: 'DELETE',
+            headers: getApiHeaders()
         }).catch(err => {
             console.error("Error deleting drawing from server:", err);
         });
