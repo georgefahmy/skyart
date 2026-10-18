@@ -58,7 +58,9 @@
         },
         homeAirport: initialHome,
         basePoints: [],        // Normalized points in [-0.5, 0.5] space
+        baseContours: null,    // Normalized sub-contours [[{x, y}], ...]
         rawProjectedPoints: [],// Latitude/Longitude points before simplification
+        rawProjectedContours: null, // Latitude/Longitude points per contour
         projectedPoints: [],   // Active simplified flight path [{lat, lon}]
         waypoints: [],         // Full flight plan route including airport transit
         center: { lat: initialHome.lat, lon: initialHome.lon },
@@ -102,6 +104,7 @@
         captureSnapshot() {
             return {
                 basePoints: ArtState.basePoints ? ArtState.basePoints.map(p => ({ x: p.x, y: p.y })) : [],
+                baseContours: ArtState.baseContours ? ArtState.baseContours.map(c => c.map(p => ({ x: p.x, y: p.y }))) : null,
                 projectedPoints: ArtState.projectedPoints ? ArtState.projectedPoints.map(p => ({ lat: p.lat, lon: p.lon })) : [],
                 sizeNM: ArtState.sizeNM,
                 heightNM: ArtState.heightNM,
@@ -160,6 +163,7 @@
 
         restoreSnapshot(s) {
             ArtState.basePoints = s.basePoints ? s.basePoints.map(p => ({ x: p.x, y: p.y })) : [];
+            ArtState.baseContours = s.baseContours ? s.baseContours.map(c => c.map(p => ({ x: p.x, y: p.y }))) : null;
             ArtState.sizeNM = s.sizeNM ?? 12;
             ArtState.heightNM = s.heightNM ?? 12;
             ArtState.lockAspect = s.lockAspect ?? true;
@@ -632,8 +636,7 @@
         const widthNM = ArtState.sizeNM || 12;
         const heightNM = ArtState.heightNM || (widthNM * (ArtState.aspectRatio || 1.0));
 
-        // Project and apply rotation, flip, and scaling
-        const projected = ArtState.basePoints.map(pt => {
+        function projectPt(pt) {
             let nx = pt.x;
             let ny = pt.y;
 
@@ -652,11 +655,17 @@
                 lat: centerLat + (ry * nmToLatDeg),
                 lon: centerLon + (rx * nmToLonDeg)
             };
-        });
+        }
 
-        ArtState.rawProjectedPoints = projected;
+        ArtState.rawProjectedPoints = ArtState.basePoints.map(projectPt);
 
-        // Simplify using Ramer-Douglas-Peucker
+        if (ArtState.baseContours && ArtState.baseContours.length > 0) {
+            ArtState.rawProjectedContours = ArtState.baseContours.map(c => c.map(projectPt));
+        } else {
+            ArtState.rawProjectedContours = null;
+        }
+
+        // Simplify using Ramer-Douglas-Peucker & Optimize
         simplifyProjectedRoute();
     }
 
@@ -734,45 +743,89 @@
     // --- Entry / Exit Waypoint Optimization ---
     // Optimizes entry/exit points for connected airports to prevent transit legs
     // from needlessly crossing/cutting through closed artwork loops, multi-letter text, or open shapes.
-    function optimizeRouteWaypoints(points) {
-        if (!points || points.length < 3) return points;
+    function optimizeRouteWaypoints(input) {
+        if (!input || input.length === 0) return [];
 
         const shouldOptimize = ArtState.includeAirport && ArtState.optimizeEntryExit && ArtState.depAirport;
         const dep = ArtState.depAirport;
         const arr = ArtState.arrAirport || dep;
 
-        // Step 1: Detect all closed sub-loops (letters, rings, shapes)
-        const subContours = [];
-        let startIdx = 0;
-        const N = points.length;
-
-        while (startIdx < N) {
-            const pStart = points[startIdx];
-            let endIdx = -1;
-            for (let j = startIdx + 2; j < N; j++) {
-                const p = points[j];
-                if (Math.abs(p.lat - pStart.lat) < 0.0001 && Math.abs(p.lon - pStart.lon) < 0.0001) {
-                    endIdx = j;
-                    break;
-                }
-            }
-            if (endIdx !== -1) {
-                subContours.push({
-                    isClosed: true,
-                    pts: points.slice(startIdx, endIdx) // unique vertices
-                });
-                startIdx = endIdx + 1;
-            } else {
-                subContours.push({
-                    isClosed: false,
-                    pts: points.slice(startIdx)
-                });
-                break;
-            }
+        // Normalize input into an array of contour arrays
+        let rawContours = [];
+        if (Array.isArray(input) && input.length > 0 && Array.isArray(input[0])) {
+            rawContours = input.filter(c => c && c.length > 0);
+        } else {
+            rawContours = [input];
         }
 
+        // Identify each sub-contour and detect if it is a closed loop
+        const subContours = [];
+        const shapeSizeNM = ArtState.sizeNM || 12;
+        const closureTolNM = Math.max(0.35, shapeSizeNM * 0.08);
+
+        rawContours.forEach(c => {
+            if (!c || c.length === 0) return;
+            if (c.length < 3) {
+                subContours.push({ isClosed: false, pts: c.map(p => ({ lat: p.lat, lon: p.lon })) });
+                return;
+            }
+
+            const pFirst = c[0];
+            const pLast = c[c.length - 1];
+            const distEnd = calculateDistanceNM(pFirst.lat, pFirst.lon, pLast.lat, pLast.lon);
+            const isClosed = (
+                (Math.abs(pFirst.lat - pLast.lat) < 0.001 && Math.abs(pFirst.lon - pLast.lon) < 0.001) ||
+                distEnd <= closureTolNM
+            );
+
+            if (isClosed) {
+                let pts = c.map(p => ({ lat: p.lat, lon: p.lon }));
+                // If closing point is within closure tolerance, slice unique vertices
+                if (distEnd <= closureTolNM && pts.length > 3) {
+                    pts = pts.slice(0, pts.length - 1);
+                }
+                subContours.push({ isClosed: true, pts: pts });
+            } else {
+                // Check if this contour contains internal closed sub-loops
+                let startIdx = 0;
+                const N = c.length;
+
+                while (startIdx < N) {
+                    const pStart = c[startIdx];
+                    let endIdx = -1;
+                    for (let j = startIdx + 2; j < N; j++) {
+                        const pj = c[j];
+                        const d = calculateDistanceNM(pStart.lat, pStart.lon, pj.lat, pj.lon);
+                        if (d <= Math.max(0.1, (ArtState.simplificationTolerance || 0.015) * 4)) {
+                            endIdx = j;
+                            break;
+                        }
+                    }
+                    if (endIdx !== -1) {
+                        subContours.push({
+                            isClosed: true,
+                            pts: c.slice(startIdx, endIdx).map(p => ({ lat: p.lat, lon: p.lon }))
+                        });
+                        startIdx = endIdx + 1;
+                    } else {
+                        subContours.push({
+                            isClosed: false,
+                            pts: c.slice(startIdx).map(p => ({ lat: p.lat, lon: p.lon }))
+                        });
+                        break;
+                    }
+                }
+            }
+        });
+
         if (!shouldOptimize) {
-            let res = points.map(p => ({ lat: p.lat, lon: p.lon }));
+            const res = [];
+            subContours.forEach(sc => {
+                res.push(...sc.pts);
+                if (sc.isClosed && sc.pts.length > 0) {
+                    res.push({ lat: sc.pts[0].lat, lon: sc.pts[0].lon });
+                }
+            });
             if (ArtState.routeReversed) res.reverse();
             return res;
         }
@@ -781,7 +834,7 @@
         if (subContours.length === 1 && subContours[0].isClosed) {
             const uniquePts = subContours[0].pts;
             const M = uniquePts.length;
-            if (M < 3) return points;
+            if (M < 3) return uniquePts;
 
             let bestIdx = 0;
             let minTransit = Infinity;
@@ -812,8 +865,8 @@
             return result;
         }
 
-        // Case 2: Multi-contour (text with multiple letters / holes)
-        if (subContours.length > 1 && subContours.every(sc => sc.isClosed)) {
+        // Case 2: Multi-contour (text with multiple letters / loops or stick font words)
+        if (subContours.length > 1) {
             const firstSc = subContours[0];
             const lastSc = subContours[subContours.length - 1];
 
@@ -828,7 +881,7 @@
             // When round-trip (dep == arr), costFwd == costRev identically.
             // Choose the direction whose departure transit is shorter!
             const shouldReverse = (costRev < costFwd - 0.01) ||
-                                  (Math.abs(costRev - costFwd) <= 0.01 && dDepLast < dDepFirst);
+                                  (Math.abs(costRev - costFwd) <= 0.01 && dDepLast < dDepFirst - 0.01);
 
             let ordered = shouldReverse ? [...subContours].reverse() : [...subContours];
             if (ArtState.routeReversed) ordered.reverse();
@@ -837,29 +890,50 @@
             let prevPoint = dep;
 
             ordered.forEach(sc => {
-                let pts = [...sc.pts];
-                if (pts.length >= 3) {
+                if (sc.isClosed && sc.pts.length >= 3) {
+                    const pts = sc.pts;
+                    const M = pts.length;
                     let minDist = Infinity;
                     let bestIdx = 0;
-                    for (let i = 0; i < pts.length; i++) {
+                    for (let i = 0; i < M; i++) {
                         const d = calculateDistanceNM(prevPoint.lat, prevPoint.lon, pts[i].lat, pts[i].lon);
                         if (d < minDist) {
                             minDist = d;
                             bestIdx = i;
                         }
                     }
-                    pts = pts.slice(bestIdx).concat(pts.slice(0, bestIdx));
-                    pts.push({ lat: pts[0].lat, lon: pts[0].lon });
+                    const loop = [];
+                    for (let j = 0; j < M; j++) {
+                        const idx = (bestIdx + j) % M;
+                        loop.push({ lat: pts[idx].lat, lon: pts[idx].lon });
+                    }
+                    loop.push({ lat: loop[0].lat, lon: loop[0].lon });
+                    result.push(...loop);
+                    prevPoint = loop[loop.length - 1];
+                } else {
+                    // Open contour (stick font letter stroke or open line)
+                    let pts = sc.pts.map(p => ({ lat: p.lat, lon: p.lon }));
+                    if (pts.length >= 2) {
+                        const dStart = calculateDistanceNM(prevPoint.lat, prevPoint.lon, pts[0].lat, pts[0].lon);
+                        const dEnd = calculateDistanceNM(prevPoint.lat, prevPoint.lon, pts[pts.length - 1].lat, pts[pts.length - 1].lon);
+                        if (dEnd < dStart) {
+                            pts.reverse();
+                        }
+                    }
+                    result.push(...pts);
+                    if (pts.length > 0) {
+                        prevPoint = pts[pts.length - 1];
+                    }
                 }
-                result.push(...pts);
-                prevPoint = pts[pts.length - 1];
             });
 
             return result;
         }
 
-        // Case 3: General open path (e.g. stick font or freehand line)
-        let result = points.map(p => ({ lat: p.lat, lon: p.lon }));
+        // Case 3: General single open path (e.g. freehand line)
+        let result = subContours[0].pts.map(p => ({ lat: p.lat, lon: p.lon }));
+        if (result.length < 2) return result;
+
         const pFirst = result[0];
         const pLast = result[result.length - 1];
 
@@ -872,7 +946,7 @@
         const costRev = dDepLast + dFirstArr;
 
         const shouldReverse = (costRev < costFwd - 0.01) ||
-                              (Math.abs(costRev - costFwd) <= 0.01 && dDepLast < dDepFirst);
+                              (Math.abs(costRev - costFwd) <= 0.01 && dDepLast < dDepFirst - 0.01);
 
         if (shouldReverse) {
             result.reverse();
@@ -891,28 +965,33 @@
             return;
         }
 
-        let points = [];
-        if (ArtState.rawProjectedPoints && ArtState.rawProjectedPoints.length > 0) {
-            // Convert lat/lon to local x/y for accurate Euclidean RDP simplification
-            const originLat = ArtState.center.lat;
-            const originLon = ArtState.center.lon;
-            const cosLat = Math.cos(toRad(originLat)) || 1.0;
+        const originLat = ArtState.center.lat;
+        const originLon = ArtState.center.lon;
+        const cosLat = Math.cos(toRad(originLat)) || 1.0;
+        const toleranceNM = ArtState.simplificationTolerance || 0.015;
 
-            const xyPoints = ArtState.rawProjectedPoints.map(p => ({
+        function simplifyContour(rawPts) {
+            if (!rawPts || rawPts.length <= 2) return rawPts.map(p => ({ lat: p.lat, lon: p.lon }));
+            const xyPoints = rawPts.map(p => ({
                 x: (p.lon - originLon) * cosLat * 60.0, // in NM
                 y: (p.lat - originLat) * 60.0,          // in NM
                 raw: p
             }));
-
-            const toleranceNM = ArtState.simplificationTolerance;
             const simplifiedXY = ramerDouglasPeucker(xyPoints, toleranceNM);
-            points = simplifiedXY.map(p => ({ lat: p.raw.lat, lon: p.raw.lon }));
+            return simplifiedXY.map(p => ({ lat: p.raw.lat, lon: p.raw.lon }));
+        }
+
+        let contourList = null;
+        if (ArtState.rawProjectedContours && ArtState.rawProjectedContours.length > 0) {
+            contourList = ArtState.rawProjectedContours.map(c => simplifyContour(c));
+        } else if (ArtState.rawProjectedPoints && ArtState.rawProjectedPoints.length > 0) {
+            contourList = [simplifyContour(ArtState.rawProjectedPoints)];
         } else {
-            points = ArtState.projectedPoints.map(p => ({ lat: p.lat, lon: p.lon }));
+            contourList = [ArtState.projectedPoints.map(p => ({ lat: p.lat, lon: p.lon }))];
         }
 
         // Optimize entry/exit waypoints for connected airport
-        points = optimizeRouteWaypoints(points);
+        const points = optimizeRouteWaypoints(contourList);
         ArtState.projectedPoints = points;
 
         buildFullFlightPlan();
@@ -1648,6 +1727,7 @@
         const offsetX = (options && options.offsetX) || 0;
         const offsetY = (options && options.offsetY) || 0;
         const mergedPoints = [];
+        const contours = [];
         let prevPt = null;
         significantContours.forEach(c => {
             if (prevPt && c.length > 2) {
@@ -1672,10 +1752,12 @@
                     p.y -= offsetY;
                 });
             }
+            contours.push(simplified);
             mergedPoints.push(...simplified);
             prevPt = simplified[simplified.length - 1];
         });
 
+        mergedPoints.contours = contours;
         return mergedPoints;
     }
 
@@ -1750,7 +1832,7 @@
         }
 
         const chained = chainPathsNearestNeighbor(segments);
-        normalizeAndSetBasePoints(chained, shouldFitBounds);
+        normalizeAndSetBasePoints(chained, shouldFitBounds, segments);
     }
 
     // --- Vector SVG Parser ---
@@ -1883,6 +1965,7 @@
     function generateStickTextArt(text) {
         const chars = text.toUpperCase().split('');
         const pts = [];
+        const contours = [];
         const charWidth = 1.0;
         const charSpacing = 0.35;
 
@@ -1890,15 +1973,22 @@
             const strokeDef = STICK_FONT[ch];
             if (!strokeDef || strokeDef.length === 0) return;
             const offsetX = idx * (charWidth + charSpacing);
+            const letterPts = [];
 
             strokeDef.forEach(p => {
-                pts.push({
+                const pt = {
                     x: offsetX + p[0],
                     y: p[1]
-                });
+                };
+                pts.push(pt);
+                letterPts.push(pt);
             });
+            if (letterPts.length > 0) {
+                contours.push(letterPts);
+            }
         });
 
+        pts.contours = contours;
         return pts;
     }
 
@@ -2186,7 +2276,7 @@
     }
 
     // --- Normalize Base Points to [-0.5, 0.5] ---
-    function normalizeAndSetBasePoints(points, shouldFitBounds = true) {
+    function normalizeAndSetBasePoints(points, shouldFitBounds = true, rawContours = null) {
         if (!points || points.length < 2) return;
 
         let minX = Infinity, maxX = -Infinity;
@@ -2208,6 +2298,16 @@
             x: (p.x - (minX + maxX) / 2) / spanX,
             y: -((p.y - (minY + maxY) / 2) / spanY)
         }));
+
+        const inputContours = rawContours || points.contours;
+        if (inputContours && inputContours.length > 0) {
+            ArtState.baseContours = inputContours.map(c => c.map(p => ({
+                x: (p.x - (minX + maxX) / 2) / spanX,
+                y: -((p.y - (minY + maxY) / 2) / spanY)
+            })));
+        } else {
+            ArtState.baseContours = [ArtState.basePoints];
+        }
 
         if (ArtState.lockAspect) {
             ArtState.heightNM = Math.max(1, Math.min(100, Math.round(ArtState.sizeNM * (ArtState.aspectRatio || 1.0) * 10) / 10));
@@ -2244,12 +2344,14 @@
                 {"x":-0.25,"y":0.154},{"x":-0.25,"y":0.439},{"x":-0.237,"y":0.466},{"x":-0.21,"y":0.478},{"x":-0.011,"y":0.498}
             ];
             rv7Outline.forEach(p => pts.push({ x: p.x, y: p.y }));
+            pts.push({ x: pts[0].x, y: pts[0].y }); // Explicitly close RV-7 loop
         } else if (shapeName === 'heart') {
             for (let t = 0; t <= Math.PI * 2; t += 0.08) {
                 const x = 16 * Math.pow(Math.sin(t), 3);
                 const y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
                 pts.push({ x: x / 35, y: y / 35 });
             }
+            pts.push({ x: pts[0].x, y: pts[0].y }); // Explicitly close Heart loop
         } else if (shapeName === 'airplane') {
             const raw = [
                 {x: 0, y: 1.0}, {x: 0.1, y: 0.8}, {x: 0.1, y: 0.3},
@@ -2273,12 +2375,13 @@
                 const r = 0.45 * Math.cos(2 * t);
                 pts.push({ x: r * Math.cos(t), y: r * Math.sin(t) });
             }
+            pts.push({ x: pts[0].x, y: pts[0].y }); // Explicitly close Clover loop
         } else if (shapeName === 'diamond') {
             pts.push({x: 0, y: 0.5}, {x: 0.5, y: 0}, {x: 0, y: -0.5}, {x: -0.5, y: 0}, {x: 0, y: 0.5});
         }
 
         if (pts.length > 0) {
-            normalizeAndSetBasePoints(pts);
+            normalizeAndSetBasePoints(pts, true, [pts]);
         }
     }
 
