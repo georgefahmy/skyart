@@ -193,6 +193,8 @@
         showWaypointIndicators: true,
         lastUploadedFile: null,
         lastDecodedImage: null,
+        lastUploadedImageDataUrl: null,
+        traceOverlay: null,
         maxWaypoints: 99,
         enforceMaxWaypoints: true
     };
@@ -897,7 +899,11 @@
                 }
             });
         }
-        ArtState.map.on('moveend dragend zoomend viewreset resize', resyncMapRenderers);
+
+        ArtState.map.on('moveend dragend zoomend viewreset resize move zoom', () => {
+            resyncMapRenderers();
+            applyOverlayTransform();
+        });
 
         // Center Pin
         createCenterMarker();
@@ -1035,9 +1041,197 @@
         if (arrName && ArtState.arrAirport) arrName.innerText = ArtState.arrAirport.name;
     }
 
+    // --- Map Tracing Lightbox Overlay (Trace by Hand) ---
+    function loadTracingOverlay(dataUrl, imgWidth, imgHeight, shouldFitBounds = true) {
+        if (!dataUrl) return;
+        ArtState.lastUploadedImageDataUrl = dataUrl;
+
+        const asp = (imgHeight && imgWidth && imgWidth > 0) ? (imgHeight / imgWidth) : 1.0;
+        const currentOpacity = (ArtState.traceOverlay && ArtState.traceOverlay.opacity !== undefined) ? ArtState.traceOverlay.opacity : 0.5;
+        const isCurrentlyInverted = (ArtState.traceOverlay && ArtState.traceOverlay.inverted) ? true : false;
+
+        // Remove existing overlay if any
+        if (ArtState.traceOverlay && ArtState.traceOverlay.layer && ArtState.map) {
+            ArtState.map.removeLayer(ArtState.traceOverlay.layer);
+        }
+
+        ArtState.traceOverlay = {
+            layer: null,
+            imageUrl: dataUrl,
+            opacity: currentOpacity,
+            visible: true,
+            aspectRatio: asp,
+            inverted: isCurrentlyInverted
+        };
+
+        ArtState.aspectRatio = asp;
+        if (ArtState.lockAspect) {
+            ArtState.heightNM = Math.max(1, Math.min(100, Math.round(ArtState.sizeNM * asp * 10) / 10));
+        }
+        syncDimensionInputs();
+
+        // Calculate bounds around center
+        const center = ArtState.center;
+        const widthNM = ArtState.sizeNM || 12;
+        const heightNM = ArtState.lockAspect ? (widthNM * asp) : (ArtState.heightNM || (widthNM * asp));
+
+        const latRadius = (heightNM / 60.0) / 2.0;
+        const cosLat = Math.cos(toRad(center.lat)) || 1.0;
+        const lonRadius = (widthNM / (60.0 * Math.max(cosLat, 0.05))) / 2.0;
+
+        const bounds = L.latLngBounds(
+            [center.lat - latRadius, center.lon - lonRadius],
+            [center.lat + latRadius, center.lon + lonRadius]
+        );
+
+        if (ArtState.map) {
+            const overlay = L.imageOverlay(dataUrl, bounds, {
+                opacity: currentOpacity,
+                interactive: false,
+                className: 'skyart-trace-overlay-layer'
+            });
+
+            overlay.addTo(ArtState.map);
+            ArtState.traceOverlay.layer = overlay;
+
+            overlay.on('load', applyOverlayTransform);
+            applyOverlayTransform();
+
+            if (shouldFitBounds) {
+                ArtState.map.fitBounds(bounds, { padding: [40, 40], animate: false });
+            }
+        }
+
+        // Switch to Draw Tab and activate freehand mode
+        const drawTabBtn = document.getElementById('draw-tab');
+        if (drawTabBtn && typeof bootstrap !== 'undefined' && bootstrap.Tab) {
+            const tabInstance = bootstrap.Tab.getOrCreateInstance(drawTabBtn);
+            tabInstance.show();
+        }
+        toggleDrawMode(true);
+
+        syncOverlayControlsUI();
+    }
+
+    function updateTraceOverlayBounds() {
+        if (!ArtState.traceOverlay || !ArtState.traceOverlay.layer || !ArtState.map) return;
+        const center = ArtState.center;
+        const widthNM = ArtState.sizeNM || 12;
+        const asp = ArtState.traceOverlay.aspectRatio || 1.0;
+        const heightNM = ArtState.lockAspect ? (widthNM * asp) : (ArtState.heightNM || (widthNM * asp));
+
+        const latRadius = (heightNM / 60.0) / 2.0;
+        const cosLat = Math.cos(toRad(center.lat)) || 1.0;
+        const lonRadius = (widthNM / (60.0 * Math.max(cosLat, 0.05))) / 2.0;
+
+        const bounds = L.latLngBounds(
+            [center.lat - latRadius, center.lon - lonRadius],
+            [center.lat + latRadius, center.lon + lonRadius]
+        );
+
+        ArtState.traceOverlay.layer.setBounds(bounds);
+        applyOverlayTransform();
+    }
+
+    function applyOverlayTransform() {
+        if (!ArtState.traceOverlay || !ArtState.traceOverlay.layer) return;
+        const el = ArtState.traceOverlay.layer.getElement();
+        if (!el) return;
+
+        el.style.transformOrigin = 'center center';
+        el.style.pointerEvents = 'none';
+
+        // Apply visibility & opacity
+        if (ArtState.traceOverlay.visible === false) {
+            el.style.display = 'none';
+        } else {
+            el.style.display = '';
+            el.style.opacity = (ArtState.traceOverlay.opacity !== undefined) ? ArtState.traceOverlay.opacity : 0.5;
+        }
+
+        // Inversion filter
+        if (ArtState.traceOverlay.inverted) {
+            el.style.filter = 'invert(1) hue-rotate(180deg)';
+        } else {
+            el.style.filter = 'none';
+        }
+
+        // Rotation
+        const rot = ArtState.rotationDeg || 0;
+        if (rot) {
+            const cleanTransform = el.style.transform.replace(/rotate\([^)]+\)/g, '').trim();
+            el.style.transform = `${cleanTransform} rotate(${rot}deg)`;
+        }
+    }
+
+    function setOverlayVisible(visible) {
+        if (!ArtState.traceOverlay) return;
+        ArtState.traceOverlay.visible = visible;
+        applyOverlayTransform();
+        syncOverlayControlsUI();
+    }
+
+    function setOverlayOpacity(opacity) {
+        if (!ArtState.traceOverlay) return;
+        ArtState.traceOverlay.opacity = opacity;
+        if (ArtState.traceOverlay.layer) {
+            ArtState.traceOverlay.layer.setOpacity(opacity);
+        }
+        syncOverlayControlsUI();
+    }
+
+    function removeTraceOverlay() {
+        if (ArtState.traceOverlay && ArtState.traceOverlay.layer && ArtState.map) {
+            ArtState.map.removeLayer(ArtState.traceOverlay.layer);
+        }
+        ArtState.traceOverlay = null;
+        syncOverlayControlsUI();
+    }
+
+    function syncOverlayControlsUI() {
+        const card = document.getElementById('tracingOverlayControlsCard');
+        const placeBtnContainer = document.getElementById('placeOverlayActionContainer');
+        const opacitySlider = document.getElementById('overlayOpacitySlider');
+        const opacityBadge = document.getElementById('overlayOpacityBadge');
+        const visIcon = document.getElementById('overlayVisibilityIcon');
+        const visLabel = document.getElementById('overlayVisibilityLabel');
+        const invertBtn = document.getElementById('overlayInvertBtn');
+
+        if (!ArtState.traceOverlay || !ArtState.traceOverlay.layer) {
+            if (card) card.classList.add('d-none');
+            if (placeBtnContainer) {
+                placeBtnContainer.classList.toggle('d-none', !ArtState.lastUploadedImageDataUrl);
+            }
+            return;
+        }
+
+        if (card) card.classList.remove('d-none');
+        if (placeBtnContainer) placeBtnContainer.classList.remove('d-none');
+
+        const op = ArtState.traceOverlay.opacity !== undefined ? ArtState.traceOverlay.opacity : 0.5;
+        if (opacitySlider) opacitySlider.value = op;
+        if (opacityBadge) opacityBadge.innerText = Math.round(op * 100) + '%';
+
+        const isVis = ArtState.traceOverlay.visible !== false;
+        if (visIcon) {
+            visIcon.className = isVis ? 'bi bi-eye-slash me-1' : 'bi bi-eye me-1';
+        }
+        if (visLabel) {
+            visLabel.innerText = isVis ? 'Hide' : 'Show';
+        }
+
+        if (invertBtn) {
+            invertBtn.classList.toggle('active', !!ArtState.traceOverlay.inverted);
+            invertBtn.classList.toggle('btn-primary', !!ArtState.traceOverlay.inverted);
+            invertBtn.classList.toggle('btn-outline-secondary', !ArtState.traceOverlay.inverted);
+        }
+    }
+
     // --- Spatial Transformation Engine ---
     // Takes normalized 2D points in [-0.5, 0.5] and projects to Lat/Lon
     function applyTransformations() {
+        updateTraceOverlayBounds();
+
         if (!ArtState.basePoints || ArtState.basePoints.length === 0) {
             clearRenderedRoute();
             return;
@@ -5768,18 +5962,87 @@
                     } else if (mode === 'outline') {
                         modeDesc.innerHTML = `<i class="bi bi-bounding-box text-primary me-1"></i><strong>Outline Only:</strong> Outer boundary silhouette only (ideal for solid logos & aircraft).`;
                         if (sliderTitle) sliderTitle.innerText = "Edge Threshold:";
+                    } else if (mode === 'traceoverlay') {
+                        modeDesc.innerHTML = `<i class="bi bi-layers-half text-primary me-1"></i><strong>Trace by Hand (Map Overlay):</strong> Projects your image directly onto the map as a semi-transparent tracing layer and opens Freehand Draw mode so you can trace your flight path directly over it.`;
                     } else {
                         modeDesc.innerHTML = `<i class="bi bi-bezier2 text-primary me-1"></i><strong>All Strokes:</strong> Traces every detected line, texture, and stroke in the image.`;
                         if (sliderTitle) sliderTitle.innerText = "Stroke Detail:";
                     }
                 }
 
-                if (ArtState.lastDecodedImage) {
-                    traceRasterImage(ArtState.lastDecodedImage, false);
-                } else if (ArtState.lastUploadedFile) {
-                    handleUploadedFile(ArtState.lastUploadedFile, false);
+                const settingsPanel = document.getElementById('importSettingsPanel');
+                if (settingsPanel) {
+                    settingsPanel.classList.toggle('d-none', mode === 'traceoverlay');
+                }
+
+                if (mode === 'traceoverlay') {
+                    if (ArtState.lastUploadedImageDataUrl && ArtState.lastDecodedImage) {
+                        loadTracingOverlay(
+                            ArtState.lastUploadedImageDataUrl,
+                            ArtState.lastDecodedImage.naturalWidth || ArtState.lastDecodedImage.width,
+                            ArtState.lastDecodedImage.naturalHeight || ArtState.lastDecodedImage.height,
+                            false
+                        );
+                    } else if (ArtState.lastUploadedFile) {
+                        handleUploadedFile(ArtState.lastUploadedFile, false);
+                    }
+                } else {
+                    if (ArtState.lastDecodedImage) {
+                        traceRasterImage(ArtState.lastDecodedImage, false);
+                    } else if (ArtState.lastUploadedFile) {
+                        handleUploadedFile(ArtState.lastUploadedFile, false);
+                    }
                 }
             });
+        });
+
+        // Quick button: Place loaded image as tracing overlay
+        document.getElementById('btnPlaceAsTracingOverlay')?.addEventListener('click', () => {
+            if (ArtState.lastUploadedImageDataUrl && ArtState.lastDecodedImage) {
+                const traceRadio = document.getElementById('importModeTraceOverlay');
+                if (traceRadio) traceRadio.checked = true;
+                const settingsPanel = document.getElementById('importSettingsPanel');
+                if (settingsPanel) settingsPanel.classList.add('d-none');
+                loadTracingOverlay(
+                    ArtState.lastUploadedImageDataUrl,
+                    ArtState.lastDecodedImage.naturalWidth || ArtState.lastDecodedImage.width,
+                    ArtState.lastDecodedImage.naturalHeight || ArtState.lastDecodedImage.height,
+                    true
+                );
+            }
+        });
+
+        // Tracing Overlay Opacity Slider
+        document.getElementById('overlayOpacitySlider')?.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value) || 0.5;
+            setOverlayOpacity(val);
+        });
+
+        // Tracing Overlay Show / Hide Toggle
+        document.getElementById('overlayToggleVisibilityBtn')?.addEventListener('click', () => {
+            const currentVis = (ArtState.traceOverlay && ArtState.traceOverlay.visible !== false);
+            setOverlayVisible(!currentVis);
+        });
+
+        // Tracing Overlay Invert Contrast
+        document.getElementById('overlayInvertBtn')?.addEventListener('click', () => {
+            if (ArtState.traceOverlay) {
+                ArtState.traceOverlay.inverted = !ArtState.traceOverlay.inverted;
+                applyOverlayTransform();
+                syncOverlayControlsUI();
+            }
+        });
+
+        // Tracing Overlay Remove
+        document.getElementById('overlayRemoveBtn')?.addEventListener('click', () => {
+            removeTraceOverlay();
+        });
+
+        // Tracing Overlay Center / Fit on Map
+        document.getElementById('overlayFitBoundsBtn')?.addEventListener('click', () => {
+            if (ArtState.traceOverlay && ArtState.traceOverlay.layer && ArtState.map) {
+                ArtState.map.fitBounds(ArtState.traceOverlay.layer.getBounds(), { padding: [40, 40] });
+            }
         });
 
         // Import Threshold Slider listener (live detail tuning for photos, sketches & line art)
@@ -5854,8 +6117,11 @@
         if (titleEl) titleEl.innerHTML = '<span class="spinner-border spinner-border-sm me-2 text-primary" role="status"></span>Decoding HEIF/HEIC image...';
 
         // Photos default to All Vector Strokes so subject facial/linework features are rendered
-        const strokesRadio = document.getElementById('importModeAllStrokes');
-        if (strokesRadio) strokesRadio.checked = true;
+        const currentHeicMode = document.querySelector('input[name="importModeRadio"]:checked')?.value;
+        if (!currentHeicMode) {
+            const strokesRadio = document.getElementById('importModeAllStrokes');
+            if (strokesRadio) strokesRadio.checked = true;
+        }
 
         try {
             await loadHeic2AnyLibrary();
@@ -5868,13 +6134,21 @@
             const blob = Array.isArray(conversion) ? conversion[0] : conversion;
             const reader = new FileReader();
             reader.onload = (e) => {
+                const dataUrl = e.target.result;
+                ArtState.lastUploadedImageDataUrl = dataUrl;
                 const img = new Image();
                 img.onload = () => {
                     ArtState.lastDecodedImage = img;
-                    traceRasterImage(img, shouldFitBounds);
+                    const activeMode = document.querySelector('input[name="importModeRadio"]:checked')?.value;
+                    if (activeMode === 'traceoverlay') {
+                        loadTracingOverlay(dataUrl, img.naturalWidth || img.width, img.naturalHeight || img.height, shouldFitBounds);
+                    } else {
+                        traceRasterImage(img, shouldFitBounds);
+                        syncOverlayControlsUI();
+                    }
                 };
                 img.onerror = () => alert("Could not decode converted HEIF image.");
-                img.src = e.target.result;
+                img.src = dataUrl;
             };
             reader.readAsDataURL(blob);
         } catch (err) {
@@ -5882,15 +6156,23 @@
             // Native fallback (e.g. Safari on macOS/iOS directly decodes HEIC in Image)
             const reader = new FileReader();
             reader.onload = (e) => {
+                const dataUrl = e.target.result;
+                ArtState.lastUploadedImageDataUrl = dataUrl;
                 const img = new Image();
                 img.onload = () => {
                     ArtState.lastDecodedImage = img;
-                    traceRasterImage(img, shouldFitBounds);
+                    const activeMode = document.querySelector('input[name="importModeRadio"]:checked')?.value;
+                    if (activeMode === 'traceoverlay') {
+                        loadTracingOverlay(dataUrl, img.naturalWidth || img.width, img.naturalHeight || img.height, shouldFitBounds);
+                    } else {
+                        traceRasterImage(img, shouldFitBounds);
+                        syncOverlayControlsUI();
+                    }
                 };
                 img.onerror = () => {
                     alert("Could not decode HEIF/HEIC image: " + (err.message || "Unsupported format."));
                 };
-                img.src = e.target.result;
+                img.src = dataUrl;
             };
             reader.readAsDataURL(file);
         } finally {
@@ -5905,9 +6187,29 @@
 
         // 1. Vector SVG
         if (name.endsWith('.svg') || file.type === 'image/svg+xml') {
-            ArtState.lastDecodedImage = null;
             const reader = new FileReader();
-            reader.onload = (e) => parseSvg(e.target.result, shouldFitBounds);
+            reader.onload = (e) => {
+                const svgText = e.target.result;
+                const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgText);
+                ArtState.lastUploadedImageDataUrl = dataUrl;
+
+                const tempImg = new Image();
+                tempImg.onload = () => {
+                    ArtState.lastDecodedImage = tempImg;
+                    const activeMode = document.querySelector('input[name="importModeRadio"]:checked')?.value;
+                    if (activeMode === 'traceoverlay') {
+                        loadTracingOverlay(dataUrl, tempImg.naturalWidth || tempImg.width || 800, tempImg.naturalHeight || tempImg.height || 600, shouldFitBounds);
+                    } else {
+                        parseSvg(svgText, shouldFitBounds);
+                        syncOverlayControlsUI();
+                    }
+                };
+                tempImg.onerror = () => {
+                    parseSvg(svgText, shouldFitBounds);
+                    syncOverlayControlsUI();
+                };
+                tempImg.src = dataUrl;
+            };
             reader.readAsText(file);
             return;
         }
@@ -5938,15 +6240,24 @@
 
             const reader = new FileReader();
             reader.onload = (e) => {
+                const dataUrl = e.target.result;
+                ArtState.lastUploadedImageDataUrl = dataUrl;
+
                 const img = new Image();
                 img.onload = () => {
                     ArtState.lastDecodedImage = img;
-                    traceRasterImage(img, shouldFitBounds);
+                    const activeMode = document.querySelector('input[name="importModeRadio"]:checked')?.value;
+                    if (activeMode === 'traceoverlay') {
+                        loadTracingOverlay(dataUrl, img.naturalWidth || img.width, img.naturalHeight || img.height, shouldFitBounds);
+                    } else {
+                        traceRasterImage(img, shouldFitBounds);
+                        syncOverlayControlsUI();
+                    }
                 };
                 img.onerror = () => {
                     alert("Failed to load image file. Please try another image.");
                 };
-                img.src = e.target.result;
+                img.src = dataUrl;
             };
             reader.readAsDataURL(file);
             return;
@@ -6100,12 +6411,9 @@
                     if (alertBox) {
                         alertBox.className = 'alert alert-success py-2 px-3 small mb-3';
                         if (data.email_sent) {
-                            alertBox.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> <strong>Email Sent!</strong> Your feedback was emailed to <strong>vans.rv7.pilot@gmail.com</strong>. Thank you for helping improve SkyArt!';
+                            alertBox.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> <strong>Email Sent!</strong> Your feedback has been emailed directly to <strong>vans.rv7.pilot@gmail.com</strong>. Thank you!';
                         } else {
-                            alertBox.innerHTML = `<i class="bi bi-check-circle-fill me-1"></i> <strong>Feedback Saved!</strong> Your feedback was logged on the server. <a href="${data.mailto_url || mailtoFallback}" class="alert-link fw-bold ms-1" target="_blank"><i class="bi bi-envelope-fill me-1"></i> Click to send via your email app</a>`;
-                            setTimeout(() => {
-                                window.location.href = data.mailto_url || mailtoFallback;
-                            }, 500);
+                            alertBox.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> <strong>Feedback Received!</strong> Your feedback has been submitted directly to the server. Thank you for helping improve SkyArt!';
                         }
                         alertBox.classList.remove('d-none');
                     }
@@ -6114,13 +6422,12 @@
                     throw new Error(data.error || 'Server returned an error.');
                 }
             } catch (err) {
-                console.warn('Feedback submission error, falling back to mailto:', err);
+                console.warn('Feedback submission error:', err);
                 if (alertBox) {
-                    alertBox.className = 'alert alert-info py-2 px-3 small mb-3';
-                    alertBox.innerHTML = `<i class="bi bi-info-circle-fill me-1"></i> Could not reach server, but you can send directly: <a href="${mailtoFallback}" class="btn btn-sm btn-primary ms-2"><i class="bi bi-envelope-fill me-1"></i> Open Email App</a>`;
+                    alertBox.className = 'alert alert-danger py-2 px-3 small mb-3';
+                    alertBox.innerHTML = `<i class="bi bi-exclamation-circle-fill me-1"></i> Could not submit feedback to server (${err.message || 'Network error'}).`;
                     alertBox.classList.remove('d-none');
                 }
-                window.location.href = mailtoFallback;
             } finally {
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = origBtnHtml;
@@ -6166,5 +6473,11 @@
     window.applyTransformations = applyTransformations;
     window.handleUploadedFile = handleUploadedFile;
     window.setMapBaseLayerForTheme = setMapBaseLayerForTheme;
+    window.loadTracingOverlay = loadTracingOverlay;
+    window.updateTraceOverlayBounds = updateTraceOverlayBounds;
+    window.setOverlayOpacity = setOverlayOpacity;
+    window.setOverlayVisible = setOverlayVisible;
+    window.removeTraceOverlay = removeTraceOverlay;
 
 })();
+

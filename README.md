@@ -17,6 +17,7 @@ A standalone web application for designing, transforming, and projecting GPS sky
 - **Preset Shapes:** 1-click loading for Airplane (RV-7), Heart, Star, Clover, Diamond, Smooth Circle, and "FLY" text.
 - **Freehand Drawing Mode:** Click "Freehand Draw Mode", then draw directly on the map using your mouse, trackpad, or touchscreen. Releasing automatically smooths the route, closes closed contours, and generates GPS waypoints.
 - **Image Import & Vectorization (PNG, JPG, SVG, iPhone HEIC):**
+  - **Trace by Hand (Overlay):** Places the uploaded image as a semi-transparent tracing lightbox directly onto the map (at 50% default opacity with click-through enabled). Pilots can immediately freehand draw or click waypoints right on top of their own custom images, logos, or sketches. Features live opacity control (10%–100%), visibility toggle, high-contrast inversion, and synchronized scaling/translation/rotation.
   - **Outline Contour:** Traces only the outer perimeter silhouette of the image.
   - **Single Stroke Path:** Specifically engineered for coloring book pages, sketches, and line drawings. Instead of generating double lines around thick pen strokes, it extracts a single continuous center flight path.
   - **All Vectors:** Captures all interior and exterior line segments for detailed multi-stroke drawings.

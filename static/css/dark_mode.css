@@ -158,3 +158,29 @@ body.dark-mode .list-group-item {
     border-color: #333 !important;
 }
 
+/* Ensure text-dark elements remain crisp and legible in dark mode (except on yellow warning badges) */
+body.dark-mode .text-dark:not(.bg-warning):not(.bg-warning *) {
+    color: #e9ecef !important;
+}
+
+/* Feedback Form & User Guide Email Recipient Styling */
+body.dark-mode #skyArtFeedbackForm a.text-primary,
+body.dark-mode #guide-feedback a.text-primary,
+body.dark-mode .user-guide-content a.text-primary {
+    color: #6ea8fe !important;
+}
+
+body.dark-mode #skyArtFeedbackForm a.text-primary:hover,
+body.dark-mode #guide-feedback a.text-primary:hover,
+body.dark-mode .user-guide-content a.text-primary:hover {
+    color: #9ec5fe !important;
+    text-decoration: underline !important;
+}
+
+body.dark-mode .modal-footer.bg-light {
+    background-color: #242526 !important;
+    border-color: #333 !important;
+    color: #e0e0e0 !important;
+}
+
+

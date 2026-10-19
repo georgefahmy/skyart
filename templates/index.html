@@ -238,15 +238,28 @@
                                         Outline Only
                                     </label>
                                 </div>
-                                <div class="form-check form-check-inline mb-0 me-0">
+                                <div class="form-check form-check-inline mb-0 me-2">
                                     <input class="form-check-input" type="radio" name="importModeRadio" id="importModeAllStrokes" value="strokes">
                                     <label class="form-check-label" for="importModeAllStrokes" title="Keep all detected vector linework and fine detail">
                                         All Strokes
                                     </label>
                                 </div>
+                                <div class="form-check form-check-inline mb-0 me-0">
+                                    <input class="form-check-input" type="radio" name="importModeRadio" id="importModeTraceOverlay" value="traceoverlay">
+                                    <label class="form-check-label fw-semibold text-primary" for="importModeTraceOverlay" title="Load image as a semi-transparent map layer to trace by hand in Freehand Draw mode">
+                                        <i class="bi bi-layers-half me-1"></i>Trace by Hand
+                                    </label>
+                                </div>
                             </div>
                             <div class="form-text mt-1" style="font-size: 0.72rem;" id="importModeDescription">
                                 <i class="bi bi-bezier2 text-primary me-1"></i><strong>Single Stroke Path:</strong> Extracts the 1px centerline skeleton of any line drawing regardless of line thickness and turns it into one continuous flight path.
+                            </div>
+
+                            <!-- Quick Action: Place Loaded Image as Tracing Overlay -->
+                            <div id="placeOverlayActionContainer" class="mt-2 d-none">
+                                <button type="button" class="btn btn-outline-primary btn-sm w-100" id="btnPlaceAsTracingOverlay" title="Project this image as a semi-transparent layer onto the map for manual tracing">
+                                    <i class="bi bi-layers-half me-1"></i> Place Image as Map Tracing Overlay
+                                </button>
                             </div>
 
                             <!-- Adaptive Line Detail / Threshold Slider for Photos & Sketches -->
@@ -281,6 +294,37 @@
 
                         <!-- Tab 3: Interactive Freehand & Waypoint Drawing -->
                         <div class="tab-pane fade" id="tabDraw" role="tabpanel">
+                            <!-- Tracing Lightbox Overlay Controls -->
+                            <div id="tracingOverlayControlsCard" class="card border border-primary border-opacity-50 bg-light p-2 mb-2 d-none shadow-sm">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <span class="fw-bold text-primary small" style="font-size: 0.74rem;">
+                                        <i class="bi bi-layers-half me-1"></i> Tracing Lightbox Layer
+                                    </span>
+                                    <div class="d-flex gap-1">
+                                        <button class="btn btn-outline-secondary btn-sm py-0 px-2" type="button" id="overlayToggleVisibilityBtn" title="Show or hide the reference image" style="font-size: 0.7rem;">
+                                            <i class="bi bi-eye-slash me-1" id="overlayVisibilityIcon"></i><span id="overlayVisibilityLabel">Hide</span>
+                                        </button>
+                                        <button class="btn btn-outline-secondary btn-sm py-0 px-1" type="button" id="overlayInvertBtn" title="Invert image contrast / colors (helpful on dark or satellite map)" style="font-size: 0.7rem;">
+                                            <i class="bi bi-circle-half"></i>
+                                        </button>
+                                        <button class="btn btn-outline-danger btn-sm py-0 px-1" type="button" id="overlayRemoveBtn" title="Remove Tracing Image Overlay" style="font-size: 0.7rem;">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="d-flex align-items-center gap-2 mb-1">
+                                    <label class="small text-muted mb-0" style="font-size: 0.7rem; white-space: nowrap;">Opacity:</label>
+                                    <input type="range" class="form-range flex-grow-1" id="overlayOpacitySlider" min="0.1" max="1.0" step="0.05" value="0.5" title="Adjust reference image transparency">
+                                    <span class="badge bg-secondary" id="overlayOpacityBadge" style="font-size: 0.68rem; min-width: 32px;">50%</span>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center text-muted" style="font-size: 0.68rem;">
+                                    <span><i class="bi bi-brush-fill text-primary me-1"></i>Click &amp; drag over image to trace</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" id="overlayFitBoundsBtn" style="font-size: 0.68rem;">
+                                        <i class="bi bi-arrows-angle-expand me-1"></i>Center on Map
+                                    </button>
+                                </div>
+                            </div>
+
                             <div class="d-flex flex-column gap-2">
                                 <div class="d-flex gap-2">
                                     <button class="btn btn-outline-primary btn-sm flex-fill fw-semibold" id="drawModeBtn" title="Draw freehand curves directly on the map">
@@ -1074,6 +1118,14 @@
                                                     Captures all internal and external line segments for complex multi-stroke graphics.
                                                 </div>
                                             </div>
+                                            <div class="list-group-item">
+                                                <div class="fw-bold text-info mb-1">
+                                                    <i class="bi bi-layers-half me-1"></i> Tracing Lightbox Layer (Trace by Hand)
+                                                </div>
+                                                <div class="text-muted">
+                                                    Want to trace the art yourself? Projects your imported image as a semi-transparent layer directly on top of the aeronautical map. Automatically launches Freehand Draw mode with live opacity controls (10%–100%), color inversion, and scale alignment so you can sketch your own custom flight path with your mouse or stylus!
+                                                </div>
+                                            </div>
                                         </div>
                                         <div class="row g-2 small text-muted">
                                             <div class="col-md-6">
@@ -1286,7 +1338,7 @@
                                             </div>
                                             <div class="col-sm-3 col-6 p-2 border rounded bg-light">
                                                 <div class="small text-muted">Est. Flight Time</div>
-                                                <div class="fw-bold fs-6 text-warning text-dark">ETE (hrs:mins)</div>
+                                                <div class="fw-bold fs-6 text-warning">ETE (hrs:mins)</div>
                                             </div>
                                             <div class="col-sm-3 col-6 p-2 border rounded bg-light">
                                                 <div class="small text-muted">Fuel Required</div>
@@ -1331,8 +1383,8 @@
                                         </div>
                                     </div>
                                     <div class="list-group-item p-3">
-                                        <div class="d-flex align-items-center gap-2 fw-bold text-dark mb-1">
-                                            <i class="bi bi-qr-code-scan fs-5 text-dark"></i> 2. ForeFlight QR Code (Wireless Import)
+                                        <div class="d-flex align-items-center gap-2 fw-bold mb-1">
+                                            <i class="bi bi-qr-code-scan fs-5 text-primary"></i> 2. ForeFlight QR Code (Wireless Import)
                                         </div>
                                         <div class="text-muted">
                                             Designing on your desktop computer or laptop? Click the <strong>QR Code</strong> button, then open the camera app on your iPad or iPhone and scan the screen. A ForeFlight banner pops up on your iPad—tap it to instantly load the flight plan wirelessly!
@@ -1406,7 +1458,7 @@
                                     <div class="col-md-6">
                                         <div class="card h-100 border shadow-sm">
                                             <div class="card-body">
-                                                <h6 class="fw-bold text-warning text-dark"><i class="bi bi-broadcast me-1"></i> Use VFR Flight Following</h6>
+                                                <h6 class="fw-bold text-warning"><i class="bi bi-broadcast me-1"></i> Use VFR Flight Following</h6>
                                                 <p class="small text-muted mb-0">
                                                     Request VFR Flight Following from ATC. When checking in, you can politely advise: <em>"We're maneuvering in this block for GPS navigation calibration / flight art."</em> Controllers appreciate knowing your planned intentions!
                                                 </p>
@@ -1435,7 +1487,7 @@
                                     </div>
                                 </div>
                                 <p class="text-muted small">
-                                    Have feedback, feature ideas, bug reports, or avionics questions? Send an email directly to <a href="mailto:vans.rv7.pilot@gmail.com?subject=SkyArt%20Feedback" class="fw-bold text-decoration-none">vans.rv7.pilot@gmail.com</a> with the form below.
+                                    Have feedback, feature ideas, bug reports, or avionics questions? Send an email directly to <a href="mailto:vans.rv7.pilot@gmail.com?subject=SkyArt%20Feedback" class="fw-bold text-decoration-none text-primary font-monospace">vans.rv7.pilot@gmail.com</a> with the form below.
                                 </p>
 
                                 <div class="card border shadow-sm mb-3">
@@ -1444,7 +1496,7 @@
                                             <div class="row g-3 mb-3">
                                                 <div class="col-md-6">
                                                     <label for="feedbackName" class="form-label small fw-bold">Your Name / Call Sign</label>
-                                                    <input type="text" class="form-control form-control-sm" id="feedbackName" placeholder="e.g. Capt. Bob / N890GF">
+                                                    <input type="text" class="form-control form-control-sm" id="feedbackName" placeholder="e.g. Capt. Bob / N12345">
                                                 </div>
                                                 <div class="col-md-6">
                                                     <label for="feedbackEmail" class="form-label small fw-bold">Your Email Address</label>
@@ -1464,7 +1516,7 @@
                                                 <div class="col-md-6">
                                                     <label for="feedbackCategory" class="form-label small fw-bold">Category</label>
                                                     <select class="form-select form-select-sm" id="feedbackCategory">
-                                                        <option value="General" selected>💬 General Feedback &amp; Praise</option>
+                                                        <option value="General" selected>💬 General Feedback</option>
                                                         <option value="Feature Request">✨ New Feature Request</option>
                                                         <option value="Bug Report">🐛 Bug Report / Issue</option>
                                                         <option value="ForeFlight & Avionics">📲 ForeFlight &amp; Avionics</option>
@@ -1496,8 +1548,11 @@
                                                         <i class="bi bi-envelope-arrow-up me-1"></i> Open in Email App
                                                     </button>
                                                 </div>
-                                                <div class="small text-muted">
-                                                    Delivers to: <strong class="text-dark">vans.rv7.pilot@gmail.com</strong>
+                                                <div class="small text-muted d-flex align-items-center gap-1">
+                                                    <span>Delivers to:</span>
+                                                    <a href="mailto:vans.rv7.pilot@gmail.com?subject=SkyArt%20Feedback" class="fw-bold text-decoration-none text-primary font-monospace" title="Click to email directly">
+                                                        <i class="bi bi-envelope-check-fill me-1"></i>vans.rv7.pilot@gmail.com
+                                                    </a>
                                                 </div>
                                             </div>
                                         </form>

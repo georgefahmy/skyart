@@ -85,11 +85,37 @@ const mockL = {
         getLatLng() { return this.latlng; }
     }),
     divIcon: (opts) => opts,
-    latLngBounds: () => ({}),
+    latLngBounds: (sw, ne) => ({
+        sw, ne,
+        isValid() { return true; }
+    }),
+    imageOverlay: (url, bounds, opts) => {
+        const mockEl = {
+            style: {
+                transform: '',
+                transformOrigin: '',
+                pointerEvents: '',
+                display: '',
+                opacity: '',
+                filter: ''
+            }
+        };
+        return {
+            url,
+            bounds,
+            opts,
+            opacity: opts?.opacity !== undefined ? opts.opacity : 1.0,
+            setOpacity(v) { this.opacity = v; mockEl.style.opacity = v; },
+            setBounds(b) { this.bounds = b; },
+            getElement() { return mockEl; },
+            addTo(map) { this._map = map; return this; },
+            on(ev, fn) {}
+        };
+    },
     map: () => ({
         setView() {},
         fitBounds() {},
-        removeLayer() {},
+        removeLayer(l) { l._removed = true; },
         hasLayer() { return false; },
         on() {},
         getCenter() { return { lat: 37.0816, lng: -121.5970 }; },
@@ -258,6 +284,41 @@ assert(tipPoint.lat < centerHeartLon || tipPoint.lat === minHeartLat, "Heart bot
 // Verify lobes are near maxLat
 const topPoints = heartPts.filter(p => p.lat > minHeartLat + 0.8 * (maxHeartLat - minHeartLat));
 assert(topPoints.length >= 10, "Lobes must constitute the top region");
-console.log("✅ Test 7 Passed: Heart preset is correctly oriented right-side up with tip at bottom and lobes at top.");
+// --- Test 8: Tracing Lightbox Layer (Trace by Hand) ---
+console.log("\n👉 Test 8: Tracing Lightbox Overlay (creation, opacity, bound sync, removal)...");
+const sampleDataUrl = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCI+PC9zdmc+";
+mockWindow.loadTracingOverlay(sampleDataUrl, 200, 100, false);
+
+assert(ArtState.traceOverlay, "ArtState.traceOverlay must be defined after loadTracingOverlay");
+assert(ArtState.traceOverlay.layer, "ArtState.traceOverlay.layer must be initialized");
+assert.strictEqual(ArtState.traceOverlay.aspectRatio, 0.5, "Aspect ratio must be imgHeight / imgWidth = 100/200 = 0.5");
+assert.strictEqual(ArtState.traceOverlay.opacity, 0.5, "Default overlay opacity must be 0.5 (50%)");
+assert.strictEqual(ArtState.traceOverlay.visible, true, "Overlay must be visible by default");
+
+// Test opacity change
+mockWindow.setOverlayOpacity(0.8);
+assert.strictEqual(ArtState.traceOverlay.opacity, 0.8, "setOverlayOpacity must update ArtState.traceOverlay.opacity to 0.8");
+assert.strictEqual(ArtState.traceOverlay.layer.opacity, 0.8, "Layer opacity must update to 0.8");
+
+// Test visibility toggle
+mockWindow.setOverlayVisible(false);
+assert.strictEqual(ArtState.traceOverlay.visible, false, "setOverlayVisible(false) must update visibility");
+const overlayEl = ArtState.traceOverlay.layer.getElement();
+assert.strictEqual(overlayEl.style.display, 'none', "Overlay element must be hidden when visible is false");
+mockWindow.setOverlayVisible(true);
+assert.strictEqual(overlayEl.style.display, '', "Overlay element display must be cleared when visible is true");
+
+// Test bound sync when ArtState.sizeNM is modified via applyTransformations
+const oldBounds = ArtState.traceOverlay.layer.bounds;
+ArtState.sizeNM = 25;
+mockWindow.applyTransformations();
+const newBounds = ArtState.traceOverlay.layer.bounds;
+assert(newBounds !== oldBounds, "applyTransformations must update overlay bounds when sizeNM changes");
+
+// Test overlay removal
+mockWindow.removeTraceOverlay();
+assert.strictEqual(ArtState.traceOverlay, null, "removeTraceOverlay must nullify ArtState.traceOverlay");
+console.log("✅ Test 8 Passed: Tracing Lightbox Layer initializes, adjusts opacity, toggles visibility, updates on transformations, and removes cleanly.");
 
 console.log("\n🎉 All Waypoint Manipulation & Closed-Loop tests PASSED successfully!\n");
+

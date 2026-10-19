@@ -28,3 +28,9 @@ instance/
 view_server_logs.sh
 *.local.sh
 
+# Environment variables & secrets
+.env
+.env.*
+.env.local
+
+

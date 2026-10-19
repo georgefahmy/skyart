@@ -21,6 +21,22 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
 os.makedirs(INSTANCE_DIR, exist_ok=True)
 
+# --- Load local .env configuration if present ---
+ENV_FILE = os.path.join(BASE_DIR, ".env")
+if os.path.exists(ENV_FILE):
+    try:
+        with open(ENV_FILE, "r", encoding="utf-8") as _env_f:
+            for _line in _env_f:
+                _line = _line.strip()
+                if _line and not _line.startswith("#") and "=" in _line:
+                    _k, _v = _line.split("=", 1)
+                    _k = _k.strip()
+                    _v = _v.strip().strip("'\"")
+                    if _k and _k not in os.environ:
+                        os.environ[_k] = _v
+    except Exception:
+        pass
+
 app = Flask(__name__, instance_path=INSTANCE_DIR)
 app.secret_key = os.environ.get("SECRET_KEY", "skyart-standalone-secret-key-9281729482")
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
