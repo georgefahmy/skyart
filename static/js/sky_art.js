@@ -6365,8 +6365,40 @@
             });
         }
 
+        const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[a-zA-Z0-9-]{2,}$/;
+
+        if (emailInput) {
+            emailInput.addEventListener('input', function () {
+                const val = this.value.trim();
+                if (val.length === 0) {
+                    this.classList.remove('is-valid', 'is-invalid');
+                } else if (EMAIL_REGEX.test(val)) {
+                    this.classList.remove('is-invalid');
+                    this.classList.add('is-valid');
+                } else {
+                    this.classList.remove('is-valid');
+                    this.classList.add('is-invalid');
+                }
+            });
+        }
+
         form.addEventListener('submit', async function (e) {
             e.preventDefault();
+
+            const email = emailInput?.value?.trim() || '';
+            if (!email || !EMAIL_REGEX.test(email)) {
+                if (alertBox) {
+                    alertBox.className = 'alert alert-warning py-2 px-3 small mb-3';
+                    alertBox.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i> Please enter a valid email address (e.g. pilot@example.com) so we can get back to you.';
+                    alertBox.classList.remove('d-none');
+                }
+                emailInput?.classList.add('is-invalid');
+                emailInput?.focus();
+                return;
+            } else {
+                emailInput?.classList.remove('is-invalid');
+                emailInput?.classList.add('is-valid');
+            }
 
             const message = messageInput?.value?.trim();
             if (!message || message.length < 4) {
@@ -6389,7 +6421,7 @@
 
             const payload = {
                 name: nameInput?.value?.trim() || '',
-                email: emailInput?.value?.trim() || '',
+                email: email,
                 subject: (subjectInput?.value || 'SkyArt Feedback').trim(),
                 category: categoryInput?.value || 'General',
                 message: message,
@@ -6418,6 +6450,7 @@
                         alertBox.classList.remove('d-none');
                     }
                     messageInput.value = '';
+                    emailInput?.classList.remove('is-valid', 'is-invalid');
                 } else {
                     throw new Error(data.error || 'Server returned an error.');
                 }

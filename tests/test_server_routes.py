@@ -165,9 +165,25 @@ class TestServerIntegrity(unittest.TestCase):
         # 1. Validation test: Empty message returns 400
         res_empty = self.client.post(
             '/api/sky_art/feedback',
-            json={"name": "Pilot", "message": ""}
+            json={"name": "Pilot", "email": "pilot@example.com", "message": ""}
         )
         self.assertEqual(res_empty.status_code, 400)
+
+        # Validation test: Missing email returns 400
+        res_no_email = self.client.post(
+            '/api/sky_art/feedback',
+            json={"name": "Pilot", "message": "Great tool!"}
+        )
+        self.assertEqual(res_no_email.status_code, 400)
+        self.assertIn("valid email address is required", res_no_email.get_json().get("error", ""))
+
+        # Validation test: Invalid email format (e.g. "test") returns 400
+        res_bad_email = self.client.post(
+            '/api/sky_art/feedback',
+            json={"name": "Pilot", "email": "test", "message": "Great tool!"}
+        )
+        self.assertEqual(res_bad_email.status_code, 400)
+        self.assertIn("valid email address is required", res_bad_email.get_json().get("error", ""))
 
         # 2. Valid submission test
         test_msg = "Fantastic tool! Flying the RV-7 silhouette over the bay was incredible."

@@ -1499,9 +1499,10 @@
                                                     <input type="text" class="form-control form-control-sm" id="feedbackName" placeholder="e.g. Capt. Bob / N12345">
                                                 </div>
                                                 <div class="col-md-6">
-                                                    <label for="feedbackEmail" class="form-label small fw-bold">Your Email Address</label>
-                                                    <input type="email" class="form-control form-control-sm" id="feedbackEmail" placeholder="pilot@example.com">
-                                                    <div class="form-text" style="font-size: 0.72rem;">Optional, if you would like a reply back.</div>
+                                                    <label for="feedbackEmail" class="form-label small fw-bold">Your Email Address <span class="text-danger">*</span></label>
+                                                    <input type="email" class="form-control form-control-sm" id="feedbackEmail" placeholder="pilot@example.com" required autocomplete="email">
+                                                    <div class="form-text" style="font-size: 0.72rem;">A valid email address is required so we can reply back.</div>
+                                                    <div class="invalid-feedback" style="font-size: 0.72rem;">Please provide a valid email address (e.g. pilot@example.com).</div>
                                                 </div>
                                             </div>
 
