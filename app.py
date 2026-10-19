@@ -750,9 +750,10 @@ def api_sky_art_feedback():
             return jsonify({"error": "Feedback message cannot be empty."}), 400
 
         sender_email = (data.get("email") or "").strip()
-        email_regex = re.compile(r"^[^@\s]+@[^@\s]+\.[a-zA-Z0-9-]{2,}$")
-        if not sender_email or not email_regex.match(sender_email):
-            return jsonify({"error": "A valid email address is required (e.g. pilot@example.com)."}), 400
+        if sender_email:
+            email_regex = re.compile(r"^[^@\s]+@[^@\s]+\.[a-zA-Z0-9-]{2,}$")
+            if "@" not in sender_email or not email_regex.match(sender_email):
+                return jsonify({"error": "Please enter a valid email address with an '@' symbol (e.g. pilot@example.com) or leave it blank."}), 400
 
         sender_name = (data.get("name") or "").strip()
         category = (data.get("category") or "General").strip()

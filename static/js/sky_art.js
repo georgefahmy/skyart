@@ -6372,7 +6372,7 @@
                 const val = this.value.trim();
                 if (val.length === 0) {
                     this.classList.remove('is-valid', 'is-invalid');
-                } else if (EMAIL_REGEX.test(val)) {
+                } else if (val.includes('@') && EMAIL_REGEX.test(val)) {
                     this.classList.remove('is-invalid');
                     this.classList.add('is-valid');
                 } else {
@@ -6386,18 +6386,20 @@
             e.preventDefault();
 
             const email = emailInput?.value?.trim() || '';
-            if (!email || !EMAIL_REGEX.test(email)) {
+            if (email.length > 0 && (!email.includes('@') || !EMAIL_REGEX.test(email))) {
                 if (alertBox) {
                     alertBox.className = 'alert alert-warning py-2 px-3 small mb-3';
-                    alertBox.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i> Please enter a valid email address (e.g. pilot@example.com) so we can get back to you.';
+                    alertBox.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i> Please include an "@" symbol in your email address (e.g. pilot@example.com) or leave the field blank.';
                     alertBox.classList.remove('d-none');
                 }
                 emailInput?.classList.add('is-invalid');
                 emailInput?.focus();
                 return;
-            } else {
+            } else if (email.length > 0) {
                 emailInput?.classList.remove('is-invalid');
                 emailInput?.classList.add('is-valid');
+            } else {
+                emailInput?.classList.remove('is-invalid', 'is-valid');
             }
 
             const message = messageInput?.value?.trim();
