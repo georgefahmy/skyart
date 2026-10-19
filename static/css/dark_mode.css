@@ -133,3 +133,28 @@ body.dark-mode .text-muted {
     color: #9e9e9e !important;
 }
 
+/* User Guide Manual Modal Dark Mode */
+body.dark-mode .user-guide-sidebar {
+    background-color: #18191a !important;
+    border-color: #333 !important;
+}
+body.dark-mode .user-guide-pills .nav-link {
+    color: #cccccc;
+}
+body.dark-mode .user-guide-pills .nav-link:hover {
+    background-color: #28292a;
+    color: #ffffff;
+}
+body.dark-mode .user-guide-pills .nav-link.active {
+    background-color: #0d6efd !important;
+    color: #ffffff !important;
+}
+body.dark-mode .user-guide-pills .nav-link.active .text-muted {
+    color: rgba(255, 255, 255, 0.75) !important;
+}
+body.dark-mode .list-group-item {
+    background-color: #242526 !important;
+    color: #e0e0e0 !important;
+    border-color: #333 !important;
+}
+

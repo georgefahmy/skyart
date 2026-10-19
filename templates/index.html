@@ -73,6 +73,9 @@
         </div>
 
         <div class="d-flex align-items-center gap-2 ms-auto flex-shrink-0">
+            <button id="userGuideBtn" class="btn btn-sm btn-outline-light rounded-circle d-flex align-items-center justify-content-center" data-bs-toggle="modal" data-bs-target="#userGuideModal" title="User Guide & Feature Manual" style="width: 31px; height: 31px; padding: 0; font-weight: bold; font-size: 0.95rem;">
+                <i class="bi bi-question-lg"></i>
+            </button>
             <button id="themeToggle" class="btn btn-sm btn-outline-light" title="Toggle Dark/Light Mode">🌙</button>
         </div>
     </div>
@@ -841,6 +844,597 @@
     </div>
 </div>
 
+<!-- Modal: User Guide & Feature Manual -->
+<div class="modal fade" id="userGuideModal" tabindex="-1" aria-labelledby="userGuideModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-dark text-white py-3 px-4">
+                <div class="d-flex align-items-center gap-3">
+                    <img src="/static/img/logo.svg" alt="SkyArt Logo" width="36" height="36" class="rounded-2 shadow-sm">
+                    <div>
+                        <div class="d-flex align-items-center gap-2">
+                            <h5 class="modal-title fw-bold mb-0" id="userGuideModalLabel">SkyArt Studio — User Guide &amp; Manual</h5>
+                            <span class="badge bg-warning text-dark font-monospace" style="font-size: 0.72rem;">v2.0</span>
+                        </div>
+                        <div class="text-white-50 small">Everything you need to know about designing, editing, and flying GPS Sky Art.</div>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="row g-0">
+                    <!-- Left Navigation Column -->
+                    <div class="col-lg-3 border-end user-guide-sidebar p-3 bg-light">
+                        <div class="mb-3">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted"></i></span>
+                                <input type="text" id="guideSearchInput" class="form-control border-start-0" placeholder="Search topics (e.g. loop, QR, single stroke)..." autocomplete="off">
+                            </div>
+                        </div>
+                        <div class="nav flex-column nav-pills user-guide-pills gap-1" id="guide-tab" role="tablist" aria-orientation="vertical">
+                            <button class="nav-link active text-start py-2 px-3 d-flex align-items-center gap-2" id="guide-quickstart-tab" data-bs-toggle="pill" data-bs-target="#guide-quickstart" type="button" role="tab" aria-controls="guide-quickstart" aria-selected="true">
+                                <span class="fs-6">🚀</span>
+                                <div>
+                                    <div class="fw-bold small">Quick Start Guide</div>
+                                    <div class="text-muted" style="font-size: 0.72rem;">Fly in 3 easy steps</div>
+                                </div>
+                            </button>
+                            <button class="nav-link text-start py-2 px-3 d-flex align-items-center gap-2" id="guide-drawing-tab" data-bs-toggle="pill" data-bs-target="#guide-drawing" type="button" role="tab" aria-controls="guide-drawing" aria-selected="false">
+                                <span class="fs-6">🎨</span>
+                                <div>
+                                    <div class="fw-bold small">Drawing &amp; Image Import</div>
+                                    <div class="text-muted" style="font-size: 0.72rem;">Single stroke, outlines, HEIC</div>
+                                </div>
+                            </button>
+                            <button class="nav-link text-start py-2 px-3 d-flex align-items-center gap-2" id="guide-waypoints-tab" data-bs-toggle="pill" data-bs-target="#guide-waypoints" type="button" role="tab" aria-controls="guide-waypoints" aria-selected="false">
+                                <span class="fs-6">📍</span>
+                                <div>
+                                    <div class="fw-bold small">Map &amp; Waypoint Tools</div>
+                                    <div class="text-muted" style="font-size: 0.72rem;">Anchor, drag, insert, delete</div>
+                                </div>
+                            </button>
+                            <button class="nav-link text-start py-2 px-3 d-flex align-items-center gap-2" id="guide-autopilot-tab" data-bs-toggle="pill" data-bs-target="#guide-autopilot" type="button" role="tab" aria-controls="guide-autopilot" aria-selected="false">
+                                <span class="fs-6">✈️</span>
+                                <div>
+                                    <div class="fw-bold small">Autopilot &amp; Loop-Backs</div>
+                                    <div class="text-muted" style="font-size: 0.72rem;">Lead turns &amp; sharp corners</div>
+                                </div>
+                            </button>
+                            <button class="nav-link text-start py-2 px-3 d-flex align-items-center gap-2" id="guide-airports-tab" data-bs-toggle="pill" data-bs-target="#guide-airports" type="button" role="tab" aria-controls="guide-airports" aria-selected="false">
+                                <span class="fs-6">🛫</span>
+                                <div>
+                                    <div class="fw-bold small">Airports &amp; Transits</div>
+                                    <div class="text-muted" style="font-size: 0.72rem;">Home base &amp; smart entry</div>
+                                </div>
+                            </button>
+                            <button class="nav-link text-start py-2 px-3 d-flex align-items-center gap-2" id="guide-stats-tab" data-bs-toggle="pill" data-bs-target="#guide-stats" type="button" role="tab" aria-controls="guide-stats" aria-selected="false">
+                                <span class="fs-6">📊</span>
+                                <div>
+                                    <div class="fw-bold small">Flight Stats &amp; Telemetry</div>
+                                    <div class="text-muted" style="font-size: 0.72rem;">ETE, fuel burn &amp; distances</div>
+                                </div>
+                            </button>
+                            <button class="nav-link text-start py-2 px-3 d-flex align-items-center gap-2" id="guide-export-tab" data-bs-toggle="pill" data-bs-target="#guide-export" type="button" role="tab" aria-controls="guide-export" aria-selected="false">
+                                <span class="fs-6">📲</span>
+                                <div>
+                                    <div class="fw-bold small">ForeFlight &amp; GPS Export</div>
+                                    <div class="text-muted" style="font-size: 0.72rem;">1-click, QR code, FPL, GPX, KML</div>
+                                </div>
+                            </button>
+                            <button class="nav-link text-start py-2 px-3 d-flex align-items-center gap-2" id="guide-tips-tab" data-bs-toggle="pill" data-bs-target="#guide-tips" type="button" role="tab" aria-controls="guide-tips" aria-selected="false">
+                                <span class="fs-6">💡</span>
+                                <div>
+                                    <div class="fw-bold small">Pro Pilot Tips</div>
+                                    <div class="text-muted" style="font-size: 0.72rem;">Airspace, wind &amp; tracking</div>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Right Content Column -->
+                    <div class="col-lg-9 p-4 user-guide-content" style="max-height: 72vh; overflow-y: auto;">
+                        <div class="tab-content" id="guide-tabContent">
+
+                            <!-- TAB 1: Quick Start -->
+                            <div class="tab-pane fade show active" id="guide-quickstart" role="tabpanel" aria-labelledby="guide-quickstart-tab">
+                                <div class="d-flex align-items-center gap-2 mb-3">
+                                    <h4 class="fw-bold mb-0">🚀 Quick Start Guide</h4>
+                                    <span class="badge bg-primary">Beginner Friendly</span>
+                                </div>
+                                <p class="lead fs-6 text-muted">
+                                    SkyArt turns drawings, shapes, and images into realistic, flyable GPS flight plans you can fly in real life with your airplane's GPS or autopilot!
+                                </p>
+
+                                <div class="row g-3 mb-4">
+                                    <div class="col-md-4">
+                                        <div class="card h-100 border shadow-sm">
+                                            <div class="card-body">
+                                                <div class="badge bg-primary rounded-circle mb-2 fs-6" style="width: 28px; height: 28px; line-height: 20px;">1</div>
+                                                <h6 class="fw-bold">Pick or Draw Art</h6>
+                                                <p class="small text-muted mb-0">
+                                                    Select a built-in shape (like the RV-7 Airplane or Heart), draw freehand with your mouse/touchscreen, or upload a photo.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="card h-100 border shadow-sm">
+                                            <div class="card-body">
+                                                <div class="badge bg-success rounded-circle mb-2 fs-6" style="width: 28px; height: 28px; line-height: 20px;">2</div>
+                                                <h6 class="fw-bold">Position &amp; Scale</h6>
+                                                <p class="small text-muted mb-0">
+                                                    Drag the orange diamond anchor pin to place the art over your favorite flying area. Use the sliders to adjust size and rotation.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="card h-100 border shadow-sm">
+                                            <div class="card-body">
+                                                <div class="badge bg-warning text-dark rounded-circle mb-2 fs-6" style="width: 28px; height: 28px; line-height: 20px;">3</div>
+                                                <h6 class="fw-bold">Export &amp; Fly</h6>
+                                                <p class="small text-muted mb-0">
+                                                    Click <strong>Open in ForeFlight</strong>, scan the <strong>QR Code</strong> with your iPad, or download a <strong>Garmin FPL</strong> file for your cockpit navigator!
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="alert alert-info border-0 shadow-sm d-flex align-items-center gap-3">
+                                    <i class="bi bi-lightbulb-fill text-info fs-3"></i>
+                                    <div class="small">
+                                        <strong>Pro Tip:</strong> By default, SkyArt automatically connects your departure and arrival airport to the art with clean transit legs, so you have a complete runway-to-runway flight plan ready to file!
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- TAB 2: Drawing & Image Import -->
+                            <div class="tab-pane fade" id="guide-drawing" role="tabpanel" aria-labelledby="guide-drawing-tab">
+                                <div class="d-flex align-items-center gap-2 mb-3">
+                                    <h4 class="fw-bold mb-0">🎨 Creating &amp; Importing Artwork</h4>
+                                </div>
+                                <p class="text-muted small">
+                                    You have multiple ways to create your flight art: pre-made aviation shapes, freehand drawing directly on the map, or uploading pictures.
+                                </p>
+
+                                <div class="card mb-3 border">
+                                    <div class="card-header bg-light py-2 fw-bold small">
+                                        <i class="bi bi-collection-fill text-primary me-1"></i> Built-in Shape Presets
+                                    </div>
+                                    <div class="card-body p-3">
+                                        <p class="small text-muted mb-2">
+                                            Click the <strong>Preset Shape</strong> dropdown in the sidebar to load instantly:
+                                        </p>
+                                        <div class="d-flex flex-wrap gap-2">
+                                            <span class="badge bg-light text-dark border p-2">✈️ Airplane (RV-7)</span>
+                                            <span class="badge bg-light text-dark border p-2">❤️ Heart</span>
+                                            <span class="badge bg-light text-dark border p-2">⭐ Star</span>
+                                            <span class="badge bg-light text-dark border p-2">🍀 Four-Leaf Clover</span>
+                                            <span class="badge bg-light text-dark border p-2">💎 Diamond</span>
+                                            <span class="badge bg-light text-dark border p-2">⭕ Smooth Circle</span>
+                                            <span class="badge bg-light text-dark border p-2">🔤 Text "FLY"</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="card mb-3 border">
+                                    <div class="card-header bg-light py-2 fw-bold small">
+                                        <i class="bi bi-pencil-fill text-success me-1"></i> Freehand Drawing Mode
+                                    </div>
+                                    <div class="card-body p-3">
+                                        <p class="small text-muted mb-2">
+                                            Want to draw your own custom shape?
+                                        </p>
+                                        <ol class="small text-muted mb-0 ps-3">
+                                            <li>Click the <strong>Freehand Draw</strong> button in the sidebar.</li>
+                                            <li>Click and drag with your mouse, finger, or stylus directly over the map canvas.</li>
+                                            <li>When you release, SkyArt automatically smooths the line, detects if you drew a closed loop, and creates optimized GPS waypoints!</li>
+                                        </ol>
+                                    </div>
+                                </div>
+
+                                <div class="card mb-3 border">
+                                    <div class="card-header bg-light py-2 fw-bold small">
+                                        <i class="bi bi-image text-warning me-1"></i> Image Import &amp; Vectorization (PNG, JPG, SVG, iPhone HEIC)
+                                    </div>
+                                    <div class="card-body p-3">
+                                        <p class="small text-muted mb-3">
+                                            Click <strong>Import Image / Photo</strong> to trace any drawing, logo, cartoon, or sketch into GPS waypoints. SkyArt provides 3 specialized tracing modes:
+                                        </p>
+                                        <div class="list-group list-group-flush border rounded mb-3 small">
+                                            <div class="list-group-item">
+                                                <div class="fw-bold text-primary mb-1">
+                                                    <i class="bi bi-bounding-box me-1"></i> Outline Contour
+                                                </div>
+                                                <div class="text-muted">
+                                                    Traces only the outer perimeter silhouette of your image (like a cookie cutter). Ideal for logos, animals, and solid shapes.
+                                                </div>
+                                            </div>
+                                            <div class="list-group-item">
+                                                <div class="fw-bold text-success mb-1">
+                                                    <i class="bi bi-bezier me-1"></i> Single Stroke Path (Recommended for Line Art &amp; Sketches)
+                                                </div>
+                                                <div class="text-muted">
+                                                    Built specifically for line drawings, coloring book pages, and black &amp; white sketches! Instead of drawing double lines along the inside and outside of thick strokes, it extracts the center skeleton into one continuous, single-stroke flight path.
+                                                </div>
+                                            </div>
+                                            <div class="list-group-item">
+                                                <div class="fw-bold text-secondary mb-1">
+                                                    <i class="bi bi-diagram-3 me-1"></i> All Vectors
+                                                </div>
+                                                <div class="text-muted">
+                                                    Captures all internal and external line segments for complex multi-stroke graphics.
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row g-2 small text-muted">
+                                            <div class="col-md-6">
+                                                <strong>Detail Slider:</strong> Adjust how fine or simple the line tracing is.
+                                            </div>
+                                            <div class="col-md-6">
+                                                <strong>Invert Colors:</strong> Check this if your image has white lines on a dark background.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- TAB 3: Waypoint Tools -->
+                            <div class="tab-pane fade" id="guide-waypoints" role="tabpanel" aria-labelledby="guide-waypoints-tab">
+                                <div class="d-flex align-items-center gap-2 mb-3">
+                                    <h4 class="fw-bold mb-0">📍 Map &amp; Waypoint Tools</h4>
+                                </div>
+                                <p class="text-muted small">
+                                    SkyArt gives you full interactive control over every vertex, leg, and dimension of your flight route directly on the aeronautical map.
+                                </p>
+
+                                <div class="card mb-3 border">
+                                    <div class="card-body p-3">
+                                        <div class="row g-3">
+                                            <div class="col-md-6">
+                                                <div class="d-flex align-items-start gap-2">
+                                                    <span class="fs-5">🔶</span>
+                                                    <div>
+                                                        <h6 class="fw-bold mb-1">Orange Diamond Center Pin</h6>
+                                                        <p class="small text-muted mb-0">
+                                                            Click and drag the orange diamond in the middle of your artwork to move the entire drawing anywhere in the world.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="d-flex align-items-start gap-2">
+                                                    <span class="fs-5">↔️</span>
+                                                    <div>
+                                                        <h6 class="fw-bold mb-1">Scale (Width &amp; Height in NM)</h6>
+                                                        <p class="small text-muted mb-0">
+                                                            Resize your art in Nautical Miles. Click the chain icon to lock or unlock aspect ratio for custom stretching.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="d-flex align-items-start gap-2">
+                                                    <span class="fs-5">🔄</span>
+                                                    <div>
+                                                        <h6 class="fw-bold mb-1">Rotate (0° – 360°)</h6>
+                                                        <p class="small text-muted mb-0">
+                                                            Spin the shape to align with favorable winds, mountain valleys, or avoid restricted airspace.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="d-flex align-items-start gap-2">
+                                                    <span class="fs-5">🔀</span>
+                                                    <div>
+                                                        <h6 class="fw-bold mb-1">Reverse Route Direction</h6>
+                                                        <p class="small text-muted mb-0">
+                                                            Toggle between flying your route clockwise or counter-clockwise with a single click.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="card mb-3 border">
+                                    <div class="card-header bg-light py-2 fw-bold small">
+                                        <i class="bi bi-cursor-fill text-primary me-1"></i> Interactive Waypoint Editing
+                                    </div>
+                                    <div class="card-body p-3">
+                                        <ul class="small text-muted mb-0 ps-3">
+                                            <li class="mb-2">
+                                                <strong>Drag to Move:</strong> Click and drag any numbered circle marker to fine-tune the waypoint position. On closed loop shapes, the start and finish point stay automatically linked.
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>Insert Waypoints:</strong> Click any <span class="badge bg-primary rounded-circle" style="width: 18px; height: 18px; line-height: 12px; display: inline-block;">+</span> handle located halfway along any leg, or click anywhere directly on the blue route line to drop a new waypoint.
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>Right-Click to Delete:</strong> Right-click on any numbered waypoint marker to immediately delete it.
+                                            </li>
+                                            <li>
+                                                <strong>Hover Tooltips:</strong> Hover over any waypoint marker to see its exact coordinates, incoming &amp; outgoing leg lengths (NM), compass tracks (°), turn angles, and autopilot cutoff distance. Hover over the route line to see leg distances and tracks.
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+
+                                <div class="alert alert-secondary border-0 shadow-sm d-flex align-items-center gap-2 py-2 px-3 small">
+                                    <i class="bi bi-shield-check text-success fs-5"></i>
+                                    <div>
+                                        <strong>Garmin &amp; ForeFlight 99-Waypoint Ceiling:</strong> Most aviation GPS avionics limit user flight plans to 99 waypoints. SkyArt automatically enforces this limit so your exported flight plans load cleanly without truncation errors!
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- TAB 4: Autopilot & Corners -->
+                            <div class="tab-pane fade" id="guide-autopilot" role="tabpanel" aria-labelledby="guide-autopilot-tab">
+                                <div class="d-flex align-items-center gap-2 mb-3">
+                                    <h4 class="fw-bold mb-0">✈️ Autopilot &amp; Loop-Backs</h4>
+                                    <span class="badge bg-warning text-dark">Patent-Grade Feature</span>
+                                </div>
+                                <p class="text-muted small">
+                                    Real aircraft autopilots cannot make instantaneous square or hairpin turns—they roll into turns early ("fly-by lead turns"). SkyArt provides specialized tools to preview and solve this.
+                                </p>
+
+                                <div class="card mb-3 border">
+                                    <div class="card-header bg-light py-2 fw-bold small">
+                                        <i class="bi bi-bezier2 text-warning me-1"></i> Autopilot Ghost Track (Orange Dashed Line)
+                                    </div>
+                                    <div class="card-body p-3">
+                                        <p class="small text-muted mb-2">
+                                            The orange dashed line previews the exact curved path your autopilot will fly at your chosen speed and bank angle.
+                                        </p>
+                                        <ul class="small text-muted mb-0 ps-3">
+                                            <li><strong>Turn Radius Slider:</strong> Adjust the turn radius from 0.2 NM (slow ultralight/drone) up to 2.5 NM (high-speed piston/turboprop). A typical general aviation aircraft cruising at 120–140 knots flies with a ~1.0 NM turn radius.</li>
+                                            <li><strong>Leg Clamping Detection:</strong> If a leg is shorter than the distance needed for a full turn, SkyArt automatically clamps the radius to fit the leg, clearly noting <code>[clamped]</code> in the tooltip so you know exactly what to expect.</li>
+                                        </ul>
+                                    </div>
+                                </div>
+
+                                <div class="card mb-3 border">
+                                    <div class="card-header bg-light py-2 fw-bold small">
+                                        <i class="bi bi-arrow-repeat text-success me-1"></i> Exterior Corner Loop-Backs (Keep Sharp Corners Crisp!)
+                                    </div>
+                                    <div class="card-body p-3">
+                                        <p class="small text-muted mb-2">
+                                            When flying a star, airplane wingtip, or sharp geometric corner, a standard autopilot will cut the corner, rounding off your artwork and ruining the drawing.
+                                        </p>
+                                        <div class="p-2 border rounded bg-light mb-3 small">
+                                            <strong>How Loop-Backs Solve This:</strong> When you enable <strong>Corner Loop-Backs</strong>, SkyArt automatically inserts an exterior teardrop loop for every turn sharper than 60°. Your aircraft flies outside the shape, completes a smooth standard-rate 270° turn, and passes directly through the corner point! On flight tracking websites like FlightAware and FlightRadar24, your corners remain 100% sharp and true to the drawing!
+                                        </div>
+                                        <p class="small text-muted mb-0">
+                                            <strong>Individual Corner Toggle:</strong> You don't have to enable loops everywhere. Click directly on any corner marker on the map to turn loop-backs on or off for that individual corner!
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- TAB 5: Airports & Transits -->
+                            <div class="tab-pane fade" id="guide-airports" role="tabpanel" aria-labelledby="guide-airports-tab">
+                                <div class="d-flex align-items-center gap-2 mb-3">
+                                    <h4 class="fw-bold mb-0">🛫 Airports &amp; Transits</h4>
+                                </div>
+                                <p class="text-muted small">
+                                    Connect your flight art directly to your departure and arrival airfields for a complete, seamless runway-to-runway flight plan.
+                                </p>
+
+                                <div class="card mb-3 border">
+                                    <div class="card-body p-3">
+                                        <div class="row g-3">
+                                            <div class="col-md-6">
+                                                <h6 class="fw-bold small mb-1"><i class="bi bi-search text-primary me-1"></i> Airport Search</h6>
+                                                <p class="small text-muted mb-0">
+                                                    Type any 3-letter or 4-letter FAA/ICAO code (e.g. <code>E16</code>, <code>KPAO</code>, <code>KOSH</code>), airport name, or city into the search box to set departure and arrival airfields.
+                                                </p>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <h6 class="fw-bold small mb-1"><i class="bi bi-house-door-fill text-success me-1"></i> Persistent Home Base</h6>
+                                                <p class="small text-muted mb-0">
+                                                    Click the <strong>Home Airport</strong> badge in the top bar to save your home base. Every time you open SkyArt, your home airport is automatically loaded!
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="card mb-3 border">
+                                    <div class="card-header bg-light py-2 fw-bold small">
+                                        <i class="bi bi-signpost-split text-info me-1"></i> Smart Entry &amp; Exit Routing
+                                    </div>
+                                    <div class="card-body p-3">
+                                        <p class="small text-muted mb-2">
+                                            When you check <strong>Connect Departure / Arrival</strong>:
+                                        </p>
+                                        <ul class="small text-muted mb-0 ps-3">
+                                            <li>Dashed green lines connect your departure runway to the start of the art, and your arrival airport to the finish.</li>
+                                            <li><strong>No Slicing Through Art:</strong> SkyArt analyzes all vertices and automatically starts your art at the vertex closest to your departure airport so the transit leg never cuts awkwardly through the middle of your drawing!</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- TAB 6: Stats & Performance -->
+                            <div class="tab-pane fade" id="guide-stats" role="tabpanel" aria-labelledby="guide-stats-tab">
+                                <div class="d-flex align-items-center gap-2 mb-3">
+                                    <h4 class="fw-bold mb-0">📊 Flight Stats &amp; Telemetry</h4>
+                                </div>
+                                <p class="text-muted small">
+                                    Plan your fuel and flight time with live, real-time telemetry calculations.
+                                </p>
+
+                                <div class="card mb-3 border">
+                                    <div class="card-body p-3">
+                                        <div class="row g-2 text-center">
+                                            <div class="col-sm-3 col-6 p-2 border rounded bg-light">
+                                                <div class="small text-muted">Artwork Distance</div>
+                                                <div class="fw-bold fs-6 text-primary">Distance (NM)</div>
+                                            </div>
+                                            <div class="col-sm-3 col-6 p-2 border rounded bg-light">
+                                                <div class="small text-muted">Total Flight</div>
+                                                <div class="fw-bold fs-6 text-success">Art + Transit</div>
+                                            </div>
+                                            <div class="col-sm-3 col-6 p-2 border rounded bg-light">
+                                                <div class="small text-muted">Est. Flight Time</div>
+                                                <div class="fw-bold fs-6 text-warning text-dark">ETE (hrs:mins)</div>
+                                            </div>
+                                            <div class="col-sm-3 col-6 p-2 border rounded bg-light">
+                                                <div class="small text-muted">Fuel Required</div>
+                                                <div class="fw-bold fs-6 text-danger">Gallons (gal)</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="card mb-3 border">
+                                    <div class="card-header bg-light py-2 fw-bold small">
+                                        <i class="bi bi-speedometer2 text-primary me-1"></i> Aircraft Performance Settings
+                                    </div>
+                                    <div class="card-body p-3">
+                                        <p class="small text-muted mb-2">
+                                            Under the <strong>Aircraft Performance</strong> section in the sidebar, customize these two numbers to match your plane:
+                                        </p>
+                                        <ul class="small text-muted mb-0 ps-3">
+                                            <li><strong>Cruise Speed (KTAS):</strong> Your true airspeed in knots (e.g. 110 kt for a C172, 160 kt for an RV-7, 180 kt for a Bonanza).</li>
+                                            <li><strong>Fuel Burn (GPH):</strong> Your average cruise fuel flow in gallons per hour (e.g. 8.5 GPH for a Lycoming O-320, 10.5 GPH for an IO-360).</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- TAB 7: ForeFlight & Exporting -->
+                            <div class="tab-pane fade" id="guide-export" role="tabpanel" aria-labelledby="guide-export-tab">
+                                <div class="d-flex align-items-center gap-2 mb-3">
+                                    <h4 class="fw-bold mb-0">📲 ForeFlight &amp; GPS Export</h4>
+                                </div>
+                                <p class="text-muted small">
+                                    Export your sky art into your cockpit electronic flight bag (EFB) or panel GPS in seconds.
+                                </p>
+
+                                <div class="list-group list-group-flush border rounded mb-3 small">
+                                    <div class="list-group-item p-3">
+                                        <div class="d-flex align-items-center gap-2 fw-bold text-primary mb-1">
+                                            <i class="bi bi-box-arrow-up-right fs-5"></i> 1. Open Directly in ForeFlight
+                                        </div>
+                                        <div class="text-muted">
+                                            If you are on an iPad, iPhone, or Mac with ForeFlight installed, tap <strong>Open in ForeFlight</strong>. ForeFlight opens immediately with the complete flight route, waypoints, and airport connections loaded in your FPL box!
+                                        </div>
+                                    </div>
+                                    <div class="list-group-item p-3">
+                                        <div class="d-flex align-items-center gap-2 fw-bold text-dark mb-1">
+                                            <i class="bi bi-qr-code-scan fs-5 text-dark"></i> 2. ForeFlight QR Code (Wireless Import)
+                                        </div>
+                                        <div class="text-muted">
+                                            Designing on your desktop computer or laptop? Click the <strong>QR Code</strong> button, then open the camera app on your iPad or iPhone and scan the screen. A ForeFlight banner pops up on your iPad—tap it to instantly load the flight plan wirelessly!
+                                        </div>
+                                    </div>
+                                    <div class="list-group-item p-3">
+                                        <div class="d-flex align-items-center gap-2 fw-bold text-success mb-1">
+                                            <i class="bi bi-file-earmark-code fs-5"></i> 3. Garmin / ForeFlight Flight Plan (.fpl)
+                                        </div>
+                                        <div class="text-muted">
+                                            Download the official aviation XML <code>.fpl</code> file. AirDrop or email it to your tablet to open in ForeFlight or Garmin Pilot, or copy it onto an SD card to load into your Garmin GTN 650/750, G3X Touch, or G1000!
+                                        </div>
+                                    </div>
+                                    <div class="list-group-item p-3">
+                                        <div class="d-flex align-items-center gap-2 fw-bold text-info mb-1">
+                                            <i class="bi bi-geo-alt fs-5"></i> 4. GPX Route (.gpx)
+                                        </div>
+                                        <div class="text-muted">
+                                            Standard GPS exchange format compatible with handheld aviation navigators (Aera series), Dynon SkyView, FlyQ, CloudAhoy, and consumer GPS devices.
+                                        </div>
+                                    </div>
+                                    <div class="list-group-item p-3">
+                                        <div class="d-flex align-items-center gap-2 fw-bold text-danger mb-1">
+                                            <i class="bi bi-globe-americas fs-5"></i> 5. Google Earth 3D Path (.kml)
+                                        </div>
+                                        <div class="text-muted">
+                                            Visualizes your flight path in 3D in Google Earth or Google Maps to preview terrain clearance and scenic views.
+                                        </div>
+                                    </div>
+                                    <div class="list-group-item p-3">
+                                        <div class="d-flex align-items-center gap-2 fw-bold text-secondary mb-1">
+                                            <i class="bi bi-clipboard-check fs-5"></i> 6. Copy Waypoint String
+                                        </div>
+                                        <div class="text-muted">
+                                            Copies the clean coordinate string to your clipboard for quick copy-pasting into 1800wxbrief / Leidos for filing your VFR flight plan.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- TAB 8: Pro Tips -->
+                            <div class="tab-pane fade" id="guide-tips" role="tabpanel" aria-labelledby="guide-tips-tab">
+                                <div class="d-flex align-items-center gap-2 mb-3">
+                                    <h4 class="fw-bold mb-0">💡 Pro Pilot Tips &amp; Best Practices</h4>
+                                </div>
+                                <p class="text-muted small">
+                                    Advice from experienced flight art pilots to ensure a safe, fun, and picture-perfect flight.
+                                </p>
+
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <div class="card h-100 border shadow-sm">
+                                            <div class="card-body">
+                                                <h6 class="fw-bold text-primary"><i class="bi bi-shield-lock me-1"></i> Check Airspace &amp; TFRs</h6>
+                                                <p class="small text-muted mb-0">
+                                                    Before takeoff, always check ForeFlight or SkyVector for local Class B/C/D airspace, Military Operations Areas (MOAs), and Temporary Flight Restrictions (TFRs). Position your artwork in open Class G or Class E airspace.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="card h-100 border shadow-sm">
+                                            <div class="card-body">
+                                                <h6 class="fw-bold text-success"><i class="bi bi-cloud-sun me-1"></i> Smooth Air is Key</h6>
+                                                <p class="small text-muted mb-0">
+                                                    Fly early in the morning or late in the afternoon when thermal convection and turbulence are at their lowest. Smooth air allows the autopilot to fly straight, laser-sharp lines.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="card h-100 border shadow-sm">
+                                            <div class="card-body">
+                                                <h6 class="fw-bold text-warning text-dark"><i class="bi bi-broadcast me-1"></i> Use VFR Flight Following</h6>
+                                                <p class="small text-muted mb-0">
+                                                    Request VFR Flight Following from ATC. When checking in, you can politely advise: <em>"We're maneuvering in this block for GPS navigation calibration / flight art."</em> Controllers appreciate knowing your planned intentions!
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="card h-100 border shadow-sm">
+                                            <div class="card-body">
+                                                <h6 class="fw-bold text-info"><i class="bi bi-compass me-1"></i> Autopilot GPS Steering (GPSS)</h6>
+                                                <p class="small text-muted mb-0">
+                                                    Coupling your autopilot to GPS Navigation (NAV / GPSS mode) will automatically crab the aircraft for crosswinds, ensuring your recorded GPS track over the ground matches the artwork perfectly!
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer bg-light py-2 px-4 d-flex justify-content-between align-items-center">
+                <span class="text-muted small">
+                    Fly safe, have fun, and share your SkyArt with the aviation community! ✈️
+                </span>
+                <button type="button" class="btn btn-primary btn-sm px-3" data-bs-dismiss="modal">
+                    Got it, Let's Fly!
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -872,6 +1466,35 @@ document.addEventListener("DOMContentLoaded", function() {
         themeToggle.addEventListener("click", function () {
             const currentlyDark = document.body.classList.contains("dark-mode");
             applyTheme(!currentlyDark);
+        });
+    }
+
+    // User Guide Search Filter
+    const guideSearchInput = document.getElementById("guideSearchInput");
+    if (guideSearchInput) {
+        guideSearchInput.addEventListener("input", function () {
+            const q = this.value.trim().toLowerCase();
+            const tabButtons = document.querySelectorAll("#guide-tab .nav-link");
+            let firstMatchedTab = null;
+
+            tabButtons.forEach(btn => {
+                const targetId = btn.getAttribute("data-bs-target");
+                const targetPane = document.querySelector(targetId);
+                if (!targetPane) return;
+
+                const text = (btn.innerText + " " + targetPane.innerText).toLowerCase();
+                const matches = !q || text.includes(q);
+                btn.classList.toggle("d-none", !matches);
+
+                if (matches && !firstMatchedTab && q) {
+                    firstMatchedTab = btn;
+                }
+            });
+
+            if (firstMatchedTab && typeof bootstrap !== "undefined" && bootstrap.Tab) {
+                const tabInstance = bootstrap.Tab.getOrCreateInstance(firstMatchedTab);
+                tabInstance.show();
+            }
         });
     }
 });
