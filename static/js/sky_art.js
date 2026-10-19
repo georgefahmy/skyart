@@ -6413,7 +6413,7 @@
                         if (data.email_sent) {
                             alertBox.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> <strong>Email Sent!</strong> Your feedback has been emailed directly to <strong>vans.rv7.pilot@gmail.com</strong>. Thank you!';
                         } else {
-                            alertBox.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> <strong>Feedback Received!</strong> Your feedback has been submitted directly to the server. Thank you for helping improve SkyArt!';
+                            alertBox.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> <strong>Feedback Received!</strong> Your feedback has been submitted. Thank you for helping improve SkyArt!';
                         }
                         alertBox.classList.remove('d-none');
                     }
