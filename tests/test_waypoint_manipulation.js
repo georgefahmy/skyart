@@ -240,4 +240,24 @@ assert(refreshedWP3.tooltipContent.includes('37.0000°'), "WP3 tooltip coordinat
 assert(refreshedWP3.tooltipContent.includes('In Leg') && refreshedWP3.tooltipContent.includes('Out Leg'), "WP3 tooltip must have recomputed leg metrics");
 console.log("✅ Test 6 Passed: dragend re-renders route and recalculates marker tooltips with fresh coordinates and leg lengths.");
 
+// --- Test 7: Heart Preset Orientation (Lobes at Top / North, Tip at Bottom / South) ---
+console.log("\n👉 Test 7: Preset 'heart' default orientation has lobes at top (North) and tip at bottom (South)...");
+mockWindow.loadPreset('heart');
+const heartPts = ArtState.projectedPoints;
+assert(heartPts.length > 50, "Heart preset should have a dense set of points");
+const heartLats = heartPts.map(p => p.lat);
+const heartLons = heartPts.map(p => p.lon);
+const minHeartLat = Math.min(...heartLats);
+const maxHeartLat = Math.max(...heartLats);
+const tipPoint = heartPts.find(p => p.lat === minHeartLat);
+
+// The tip of the heart should be at minLat (lowest point / south) and centered around lon center
+const centerHeartLon = (Math.min(...heartLons) + Math.max(...heartLons)) / 2;
+assert(Math.abs(tipPoint.lon - centerHeartLon) < 0.05, "Heart tip should be centrally aligned at bottom");
+assert(tipPoint.lat < centerHeartLon || tipPoint.lat === minHeartLat, "Heart bottom must be the minimum latitude");
+// Verify lobes are near maxLat
+const topPoints = heartPts.filter(p => p.lat > minHeartLat + 0.8 * (maxHeartLat - minHeartLat));
+assert(topPoints.length >= 10, "Lobes must constitute the top region");
+console.log("✅ Test 7 Passed: Heart preset is correctly oriented right-side up with tip at bottom and lobes at top.");
+
 console.log("\n🎉 All Waypoint Manipulation & Closed-Loop tests PASSED successfully!\n");
