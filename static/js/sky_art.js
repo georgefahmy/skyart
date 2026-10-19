@@ -4811,32 +4811,35 @@
                 const drawnWidthNM = Math.max(0.5, (maxLon - minLon) * cosLat * 60.0);
                 const drawnHeightNM = Math.max(0.5, (maxLat - minLat) * 60.0);
 
-                // Update ArtState center to where the shape was drawn
-                ArtState.center.lat = centerLat;
-                ArtState.center.lon = centerLon;
-                if (ArtState.centerMarker) {
-                    ArtState.centerMarker.setLatLng([centerLat, centerLon]);
+                const hasOverlay = !!(ArtState.traceOverlay && ArtState.traceOverlay.layer);
+
+                // If drawing from scratch on a blank canvas (no overlay active),
+                // align center and initial dimensions to the first stroke so the anchor pin is placed right on the art.
+                // When tracing an overlay or on subsequent strokes, preserve the established center & dimensions
+                // so the background template and existing strokes NEVER jump or rescale!
+                if (!hasOverlay && ArtState.strokeCount === 1) {
+                    ArtState.center.lat = centerLat;
+                    ArtState.center.lon = centerLon;
+                    if (ArtState.centerMarker) {
+                        ArtState.centerMarker.setLatLng([centerLat, centerLon]);
+                    }
+
+                    ArtState.sizeNM = Math.max(1, Math.min(100, Math.round(drawnWidthNM * 10) / 10));
+                    ArtState.heightNM = Math.max(1, Math.min(100, Math.round(drawnHeightNM * 10) / 10));
+                    ArtState.aspectRatio = drawnHeightNM / drawnWidthNM;
+                    ArtState.rotationDeg = 0;
+                    ArtState.flipH = false;
+                    ArtState.flipV = false;
+                    ArtState.routeReversed = false;
+                    syncAllControls();
                 }
 
-                // Update size and height in NM
-                ArtState.sizeNM = Math.max(1, Math.min(100, Math.round(drawnWidthNM * 10) / 10));
-                ArtState.heightNM = Math.max(1, Math.min(100, Math.round(drawnHeightNM * 10) / 10));
-                ArtState.aspectRatio = drawnHeightNM / drawnWidthNM;
-                ArtState.rotationDeg = 0;
-                ArtState.flipH = false;
-                ArtState.flipV = false;
-                ArtState.routeReversed = false;
-
-                const spanX = (maxLon - minLon) || 0.0001;
-                const spanY = (maxLat - minLat) || 0.0001;
-
-                ArtState.basePoints = combined.map(pt => ({
-                    x: (pt.lon - centerLon) / spanX,
-                    y: (pt.lat - centerLat) / spanY
-                }));
+                // Map drawn geographic coordinates into basePoints using unprojectPoint.
+                // Because unprojectPoint and projectPt are exact mathematical inverses,
+                // the projected points will land at the EXACT lat/lon where the user traced them!
+                ArtState.basePoints = combined.map(pt => unprojectPoint(pt.lat, pt.lon));
                 ArtState.baseContours = null;
 
-                syncAllControls();
                 applyTransformations();
                 // Stay in drawing mode so subsequent strokes can be added continuously!
             }
@@ -6513,6 +6516,7 @@
     window.setOverlayOpacity = setOverlayOpacity;
     window.setOverlayVisible = setOverlayVisible;
     window.removeTraceOverlay = removeTraceOverlay;
+    window.unprojectPoint = unprojectPoint;
 
 })();
 

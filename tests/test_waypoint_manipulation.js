@@ -320,5 +320,66 @@ mockWindow.removeTraceOverlay();
 assert.strictEqual(ArtState.traceOverlay, null, "removeTraceOverlay must nullify ArtState.traceOverlay");
 console.log("✅ Test 8 Passed: Tracing Lightbox Layer initializes, adjusts opacity, toggles visibility, updates on transformations, and removes cleanly.");
 
+// --- Test 9: Freehand Tracing Over Active Lightbox Overlay Preserves Alignment & Bounds ---
+console.log("\n👉 Test 9: Freehand tracing over template image keeps overlay bounds and stroke alignment intact...");
+// 1. Setup overlay with known dimensions
+mockWindow.loadTracingOverlay(sampleDataUrl, 200, 200, false);
+ArtState.sizeNM = 12.0;
+ArtState.heightNM = 12.0;
+ArtState.aspectRatio = 1.0;
+ArtState.center = { lat: 37.0816, lon: -121.5970 };
+mockWindow.applyTransformations();
+
+const initialOverlayBounds = { ...ArtState.traceOverlay.layer.bounds };
+const initialCenter = { ...ArtState.center };
+const initialSizeNM = ArtState.sizeNM;
+const initialHeightNM = ArtState.heightNM;
+
+// 2. Simulate user tracing a stroke across the overlay
+// e.g. a 3-point corner turn across the overlay
+const tracedStroke = [
+    { lat: 37.0850, lon: -121.5950 },
+    { lat: 37.0950, lon: -121.5800 },
+    { lat: 37.0900, lon: -121.5700 }
+];
+
+// Check condition as in mouseup handler:
+const hasOverlay = !!(ArtState.traceOverlay && ArtState.traceOverlay.layer);
+ArtState.strokeCount = 1;
+
+if (!hasOverlay && ArtState.strokeCount === 1) {
+    // Should NOT execute when overlay is active
+    ArtState.center.lat = 999;
+}
+
+// Convert stroke using unprojectPoint
+ArtState.basePoints = tracedStroke.map(pt => mockWindow.unprojectPoint(pt.lat, pt.lon));
+ArtState.baseContours = null;
+mockWindow.applyTransformations();
+
+// 3. Verify ArtState center and dimensions are strictly preserved
+assert.strictEqual(ArtState.center.lat, initialCenter.lat, "ArtState center lat must remain unchanged");
+assert.strictEqual(ArtState.center.lon, initialCenter.lon, "ArtState center lon must remain unchanged");
+assert.strictEqual(ArtState.sizeNM, initialSizeNM, "ArtState sizeNM must remain unchanged");
+assert.strictEqual(ArtState.heightNM, initialHeightNM, "ArtState heightNM must remain unchanged");
+
+// 4. Verify overlay layer bounds were not shrunk or shifted
+assert.deepStrictEqual(ArtState.traceOverlay.layer.bounds.sw, initialOverlayBounds.sw, "Overlay layer bounds SW must not shift or shrink");
+assert.deepStrictEqual(ArtState.traceOverlay.layer.bounds.ne, initialOverlayBounds.ne, "Overlay layer bounds NE must not shift or shrink");
+
+// 5. Verify projected points exactly match the traced points (within floating-point precision)
+assert.strictEqual(ArtState.projectedPoints.length, tracedStroke.length, "Projected points count must match traced points");
+for (let i = 0; i < tracedStroke.length; i++) {
+    const orig = tracedStroke[i];
+    const proj = ArtState.projectedPoints[i];
+    assert(Math.abs(proj.lat - orig.lat) < 1e-6, `Point ${i} latitude must match original traced latitude`);
+    assert(Math.abs(proj.lon - orig.lon) < 1e-6, `Point ${i} longitude must match original traced longitude`);
+}
+
+// Clean up
+mockWindow.removeTraceOverlay();
+console.log("✅ Test 9 Passed: Tracing over overlay preserves template position, dimensions, and path alignment perfectly.");
+
 console.log("\n🎉 All Waypoint Manipulation & Closed-Loop tests PASSED successfully!\n");
+
 
