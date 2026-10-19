@@ -80,6 +80,14 @@ A standalone web application for designing, transforming, and projecting GPS sky
 
 ---
 
+### 9. ✉️ Feedback & Support Form
+- Accessible directly within the in-app **Help & User Guide** (`?` icon in the top header).
+- Pilots can submit suggestions, report bugs, request avionics features, or ask questions.
+- Form submissions are sent directly to **`vans.rv7.pilot@gmail.com`** with the subject line **`SkyArt Feedback`**, and are archived safely in the server database and access logs.
+- Includes 1-click fallback to open the pre-filled draft in your personal desktop or mobile email application.
+
+---
+
 ## Quick Start (Local Run)
 
 1. **Clone the repository**:

@@ -161,6 +161,55 @@ class TestServerIntegrity(unittest.TestCase):
         # Check that deleted art name and IP are logged
         self.assertIn("[DELETED ART]", logs)
 
+    def test_feedback_api(self):
+        # 1. Validation test: Empty message returns 400
+        res_empty = self.client.post(
+            '/api/sky_art/feedback',
+            json={"name": "Pilot", "message": ""}
+        )
+        self.assertEqual(res_empty.status_code, 400)
+
+        # 2. Valid submission test
+        test_msg = "Fantastic tool! Flying the RV-7 silhouette over the bay was incredible."
+        res_ok = self.client.post(
+            '/api/sky_art/feedback',
+            headers={'X-User-ID': 'usr_tester_123', 'X-Forwarded-For': '198.51.100.42'},
+            json={
+                "name": "Capt. Sully",
+                "email": "sully@example.com",
+                "category": "Feature Request",
+                "subject": "SkyArt Feedback",
+                "message": test_msg,
+                "diagnostics": {
+                    "pointsCount": 55,
+                    "artSource": "preset",
+                    "speedKTAS": 160
+                }
+            }
+        )
+        self.assertEqual(res_ok.status_code, 200)
+        data = res_ok.get_json()
+        self.assertTrue(data.get("success"))
+        self.assertTrue(data.get("saved"))
+        self.assertEqual(data.get("recipient"), "vans.rv7.pilot@gmail.com")
+        self.assertEqual(data.get("subject"), "SkyArt Feedback")
+        self.assertIn("vans.rv7.pilot@gmail.com", data.get("mailto_url", ""))
+        self.assertIn("SkyArt%20Feedback", data.get("mailto_url", ""))
+
+        # 3. Check database record
+        from app import SkyArtFeedback
+        with app.app_context():
+            fb = SkyArtFeedback.query.filter_by(id=data["id"]).first()
+            self.assertIsNotNone(fb)
+            self.assertEqual(fb.sender_name, "Capt. Sully")
+            self.assertEqual(fb.sender_email, "sully@example.com")
+            self.assertEqual(fb.category, "Feature Request")
+            self.assertEqual(fb.subject, "SkyArt Feedback")
+            self.assertEqual(fb.message, test_msg)
+            self.assertEqual(fb.ip_address, "198.51.100.42")
+            self.assertIn("preset", fb.diagnostics_json)
+
 
 if __name__ == '__main__':
     unittest.main()
+

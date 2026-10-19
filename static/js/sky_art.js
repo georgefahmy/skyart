@@ -5955,11 +5955,185 @@
         alert("Please upload an SVG vector file (.svg), PNG (.png), JPEG (.jpg, .jpeg), or HEIF/HEIC (.heic, .heif).");
     }
 
+    // --- Help Window Feedback Form ---
+    function setupFeedbackForm() {
+        const form = document.getElementById('skyArtFeedbackForm');
+        if (!form) return;
+
+        const nameInput = document.getElementById('feedbackName');
+        const emailInput = document.getElementById('feedbackEmail');
+        const subjectInput = document.getElementById('feedbackSubject');
+        const categoryInput = document.getElementById('feedbackCategory');
+        const messageInput = document.getElementById('feedbackMessage');
+        const diagCheckbox = document.getElementById('feedbackIncludeDiagnostics');
+        const submitBtn = document.getElementById('feedbackSubmitBtn');
+        const mailtoBtn = document.getElementById('feedbackMailtoBtn');
+        const alertBox = document.getElementById('feedbackStatusAlert');
+        const footerBtn = document.getElementById('openFeedbackFromFooterBtn');
+
+        // Footer button to open feedback tab
+        if (footerBtn) {
+            footerBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                const feedbackTabBtn = document.getElementById('guide-feedback-tab');
+                if (feedbackTabBtn && typeof bootstrap !== 'undefined' && bootstrap.Tab) {
+                    const tabInstance = bootstrap.Tab.getOrCreateInstance(feedbackTabBtn);
+                    tabInstance.show();
+                    setTimeout(() => {
+                        messageInput?.focus();
+                    }, 200);
+                }
+            });
+        }
+
+        function collectDiagnostics() {
+            return {
+                pointsCount: ArtState.projectedPoints ? ArtState.projectedPoints.length : 0,
+                artSource: ArtState.sourceType || 'none',
+                sizeNM: ArtState.sizeNM || 12,
+                heightNM: ArtState.heightNM || 12,
+                turnRadiusNM: ArtState.turnRadiusNM || 1.0,
+                cornerLoops: !!ArtState.cornerLoopsEnabled,
+                speedKTAS: ArtState.speedKTAS || 135,
+                depAirport: ArtState.departureAirport ? (ArtState.departureAirport.icao || ArtState.departureAirport.faa) : 'None',
+                arrAirport: ArtState.arrivalAirport ? (ArtState.arrivalAirport.icao || ArtState.arrivalAirport.faa) : 'None',
+                theme: document.body.classList.contains('dark-mode') ? 'dark' : 'light'
+            };
+        }
+
+        function getMailtoUrl() {
+            const recipient = 'vans.rv7.pilot@gmail.com';
+            const subject = (subjectInput?.value || 'SkyArt Feedback').trim();
+            const senderName = nameInput?.value?.trim() || 'Pilot';
+            const senderEmail = emailInput?.value?.trim() || 'No email provided';
+            const category = categoryInput?.value || 'General';
+            const message = messageInput?.value?.trim() || '';
+
+            let body = `From: ${senderName} (${senderEmail})\nCategory: ${category}\n\n${message}`;
+            if (diagCheckbox?.checked) {
+                const diag = collectDiagnostics();
+                body += '\n\n--- Flight Plan Diagnostics ---\n';
+                for (const [k, v] of Object.entries(diag)) {
+                    body += `${k}: ${v}\n`;
+                }
+            }
+
+            return `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        }
+
+        if (mailtoBtn) {
+            mailtoBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                const message = messageInput?.value?.trim();
+                if (!message) {
+                    if (alertBox) {
+                        alertBox.className = 'alert alert-warning py-2 px-3 small mb-3';
+                        alertBox.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i> Please type a short message before opening your email app.';
+                        alertBox.classList.remove('d-none');
+                    }
+                    messageInput?.focus();
+                    return;
+                }
+
+                const url = getMailtoUrl();
+                window.location.href = url;
+
+                // Also record in background
+                fetch('/api/sky_art/feedback', {
+                    method: 'POST',
+                    headers: getApiHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify({
+                        name: nameInput?.value?.trim() || '',
+                        email: emailInput?.value?.trim() || '',
+                        subject: subjectInput?.value?.trim() || 'SkyArt Feedback',
+                        category: categoryInput?.value || 'General',
+                        message: message,
+                        diagnostics: diagCheckbox?.checked ? collectDiagnostics() : null
+                    })
+                }).catch(() => {});
+            });
+        }
+
+        form.addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            const message = messageInput?.value?.trim();
+            if (!message || message.length < 4) {
+                if (alertBox) {
+                    alertBox.className = 'alert alert-warning py-2 px-3 small mb-3';
+                    alertBox.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i> Please enter a feedback message with at least 4 characters.';
+                    alertBox.classList.remove('d-none');
+                }
+                messageInput?.focus();
+                return;
+            }
+
+            const origBtnHtml = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Sending...';
+
+            if (alertBox) {
+                alertBox.classList.add('d-none');
+            }
+
+            const payload = {
+                name: nameInput?.value?.trim() || '',
+                email: emailInput?.value?.trim() || '',
+                subject: (subjectInput?.value || 'SkyArt Feedback').trim(),
+                category: categoryInput?.value || 'General',
+                message: message,
+                diagnostics: diagCheckbox?.checked ? collectDiagnostics() : null
+            };
+
+            const mailtoFallback = getMailtoUrl();
+
+            try {
+                const res = await fetch('/api/sky_art/feedback', {
+                    method: 'POST',
+                    headers: getApiHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await res.json();
+
+                if (res.ok && data.success) {
+                    if (alertBox) {
+                        alertBox.className = 'alert alert-success py-2 px-3 small mb-3';
+                        if (data.email_sent) {
+                            alertBox.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> <strong>Email Sent!</strong> Your feedback was emailed to <strong>vans.rv7.pilot@gmail.com</strong>. Thank you for helping improve SkyArt!';
+                        } else {
+                            alertBox.innerHTML = `<i class="bi bi-check-circle-fill me-1"></i> <strong>Feedback Saved!</strong> Your feedback was logged on the server. <a href="${data.mailto_url || mailtoFallback}" class="alert-link fw-bold ms-1" target="_blank"><i class="bi bi-envelope-fill me-1"></i> Click to send via your email app</a>`;
+                            setTimeout(() => {
+                                window.location.href = data.mailto_url || mailtoFallback;
+                            }, 500);
+                        }
+                        alertBox.classList.remove('d-none');
+                    }
+                    messageInput.value = '';
+                } else {
+                    throw new Error(data.error || 'Server returned an error.');
+                }
+            } catch (err) {
+                console.warn('Feedback submission error, falling back to mailto:', err);
+                if (alertBox) {
+                    alertBox.className = 'alert alert-info py-2 px-3 small mb-3';
+                    alertBox.innerHTML = `<i class="bi bi-info-circle-fill me-1"></i> Could not reach server, but you can send directly: <a href="${mailtoFallback}" class="btn btn-sm btn-primary ms-2"><i class="bi bi-envelope-fill me-1"></i> Open Email App</a>`;
+                    alertBox.classList.remove('d-none');
+                }
+                window.location.href = mailtoFallback;
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = origBtnHtml;
+            }
+        });
+    }
+
     // --- DOM Ready ---
     document.addEventListener('DOMContentLoaded', function () {
         initMap();
         setupAirportControls();
         bindUiControls();
+        setupFeedbackForm();
         updateCenterInputs();
         updateHomeAirportUI();
         syncDimensionInputs();

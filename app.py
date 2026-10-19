@@ -10,6 +10,7 @@ import os
 import re
 import time
 import uuid
+import urllib.parse
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 
@@ -230,6 +231,41 @@ class SkyArtHomeAirport(db.Model):
             "lat": self.lat,
             "lon": self.lon,
             "updatedAt": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class SkyArtFeedback(db.Model):
+    __tablename__ = "sky_art_feedback"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.String(100), index=True, nullable=True)
+    ip_address = db.Column(db.String(50), index=True, nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    sender_name = db.Column(db.String(150), nullable=True)
+    sender_email = db.Column(db.String(150), nullable=True)
+    category = db.Column(db.String(100), nullable=True)
+    subject = db.Column(db.String(200), default="SkyArt Feedback")
+    message = db.Column(db.Text, nullable=False)
+    diagnostics_json = db.Column(db.Text, nullable=True)
+    email_status = db.Column(db.String(100), default="saved")
+
+    def to_dict(self):
+        try:
+            diag = json.loads(self.diagnostics_json) if self.diagnostics_json else None
+        except Exception:
+            diag = None
+        return {
+            "id": self.id,
+            "userId": self.user_id,
+            "ipAddress": self.ip_address,
+            "createdAt": self.created_at.isoformat() if self.created_at else None,
+            "senderName": self.sender_name,
+            "senderEmail": self.sender_email,
+            "category": self.category,
+            "subject": self.subject,
+            "message": self.message,
+            "diagnostics": diag,
+            "emailStatus": self.email_status,
         }
 
 
@@ -683,6 +719,146 @@ def api_sky_art_export_kml():
         return resp
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/sky_art/feedback", methods=["POST"])
+def api_sky_art_feedback():
+    """
+    Submits user feedback, persists to database & server log,
+    and sends an email to vans.rv7.pilot@gmail.com with subject 'SkyArt Feedback'.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        message = (data.get("message") or "").strip()
+        if not message:
+            return jsonify({"error": "Feedback message cannot be empty."}), 400
+
+        sender_name = (data.get("name") or "").strip()
+        sender_email = (data.get("email") or "").strip()
+        category = (data.get("category") or "General").strip()
+        subject = (data.get("subject") or "SkyArt Feedback").strip()
+        if not subject:
+            subject = "SkyArt Feedback"
+
+        diagnostics = data.get("diagnostics")
+        diag_json = json.dumps(diagnostics) if diagnostics else None
+
+        client_ip = getattr(request, "_client_ip", None) or get_client_ip()
+        uid = getattr(request, "_skyart_user_id", None)
+
+        feedback = SkyArtFeedback(
+            user_id=uid,
+            ip_address=client_ip,
+            sender_name=sender_name or None,
+            sender_email=sender_email or None,
+            category=category,
+            subject=subject,
+            message=message,
+            diagnostics_json=diag_json,
+            email_status="pending",
+        )
+        db.session.add(feedback)
+        db.session.commit()
+
+        app.logger.info(
+            f"[FEEDBACK] Received feedback from '{sender_name}' <{sender_email}> | Subject: '{subject}' | Category: {category} | IP: {client_ip} | Message: {message[:120]}"
+        )
+
+        recipient = "vans.rv7.pilot@gmail.com"
+        email_sent = False
+        email_error = None
+
+        # Compose full plaintext email body
+        body_lines = [
+            "SkyArt Flight Art Generator - User Feedback",
+            "=" * 50,
+            f"Subject: {subject}",
+            f"From: {sender_name or 'Anonymous'} ({sender_email or 'No email provided'})",
+            f"Category: {category}",
+            f"User ID: {uid or 'Unknown'}",
+            f"Client IP: {client_ip}",
+            f"Timestamp: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
+            "",
+            "Feedback Message:",
+            "-" * 50,
+            message,
+            "-" * 50,
+        ]
+        if diagnostics and isinstance(diagnostics, dict):
+            body_lines.extend([
+                "",
+                "Client & Flight Plan Diagnostics:",
+                "-" * 50,
+            ])
+            for k, v in diagnostics.items():
+                body_lines.append(f"  • {k}: {v}")
+
+        email_full_text = "\n".join(body_lines)
+
+        # Attempt sending email via configured SMTP (e.g. Gmail App Password or custom SMTP server)
+        smtp_user = os.environ.get("SMTP_USER")
+        smtp_pass = os.environ.get("SMTP_PASSWORD")
+        smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+        smtp_port = int(os.environ.get("SMTP_PORT", 587))
+
+        if smtp_user and smtp_pass:
+            try:
+                import smtplib
+                from email.mime.text import MIMEText
+                from email.mime.multipart import MIMEMultipart
+
+                msg = MIMEMultipart()
+                msg["From"] = smtp_user
+                msg["To"] = recipient
+                msg["Subject"] = subject
+                if sender_email:
+                    msg["Reply-To"] = sender_email
+
+                msg.attach(MIMEText(email_full_text, "plain", "utf-8"))
+
+                with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
+                    server.starttls()
+                    server.login(smtp_user, smtp_pass)
+                    server.send_message(msg)
+                    email_sent = True
+                    feedback.email_status = "sent_smtp"
+                    db.session.commit()
+                    app.logger.info(f"[FEEDBACK] Email successfully sent to {recipient} via SMTP")
+            except Exception as e:
+                email_error = str(e)
+                feedback.email_status = f"failed_smtp: {str(e)[:60]}"
+                db.session.commit()
+                app.logger.error(f"[FEEDBACK] Failed to send email via SMTP: {e}")
+        else:
+            feedback.email_status = "saved_no_smtp"
+            db.session.commit()
+
+        # Build mailto URL for direct email client fallback
+        mailto_body = f"From: {sender_name or 'Pilot'} ({sender_email or 'no email'})\nCategory: {category}\n\n{message}"
+        if diagnostics and isinstance(diagnostics, dict):
+            diag_summary = ", ".join(f"{k}={v}" for k, v in list(diagnostics.items())[:6])
+            mailto_body += f"\n\n[Diagnostics: {diag_summary}]"
+
+        mailto_query = urllib.parse.urlencode({
+            "subject": subject,
+            "body": mailto_body
+        }, quote_via=urllib.parse.quote)
+        mailto_url = f"mailto:{recipient}?{mailto_query}"
+
+        return jsonify({
+            "success": True,
+            "saved": True,
+            "id": feedback.id,
+            "email_sent": email_sent,
+            "recipient": recipient,
+            "subject": subject,
+            "mailto_url": mailto_url,
+            "error": email_error,
+            "message": "Feedback received and saved successfully!"
+        })
+    except Exception as ex:
+        app.logger.error(f"[FEEDBACK ERROR] {ex}", exc_info=True)
+        return jsonify({"error": str(ex)}), 500
 
 
 @app.route("/favicon.ico")

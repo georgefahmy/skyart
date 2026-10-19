@@ -928,6 +928,13 @@
                                     <div class="text-muted" style="font-size: 0.72rem;">Airspace, wind &amp; tracking</div>
                                 </div>
                             </button>
+                            <button class="nav-link text-start py-2 px-3 d-flex align-items-center gap-2 border-top mt-1 pt-2" id="guide-feedback-tab" data-bs-toggle="pill" data-bs-target="#guide-feedback" type="button" role="tab" aria-controls="guide-feedback" aria-selected="false">
+                                <span class="fs-6">✉️</span>
+                                <div>
+                                    <div class="fw-bold small text-primary">Feedback &amp; Contact</div>
+                                    <div class="text-muted" style="font-size: 0.72rem;">Email vans.rv7.pilot@gmail.com</div>
+                                </div>
+                            </button>
                         </div>
                     </div>
 
@@ -1419,14 +1426,98 @@
                                 </div>
                             </div>
 
+                            <!-- TAB 9: Feedback Form -->
+                            <div class="tab-pane fade" id="guide-feedback" role="tabpanel" aria-labelledby="guide-feedback-tab">
+                                <div class="d-flex align-items-center justify-content-between mb-3">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <h4 class="fw-bold mb-0">✉️ SkyArt Feedback &amp; Suggestions</h4>
+                                        <span class="badge bg-primary">Direct to Developer</span>
+                                    </div>
+                                </div>
+                                <p class="text-muted small">
+                                    Have feedback, feature ideas, bug reports, or avionics questions? Send an email directly to <a href="mailto:vans.rv7.pilot@gmail.com?subject=SkyArt%20Feedback" class="fw-bold text-decoration-none">vans.rv7.pilot@gmail.com</a> with the form below.
+                                </p>
+
+                                <div class="card border shadow-sm mb-3">
+                                    <div class="card-body p-4">
+                                        <form id="skyArtFeedbackForm">
+                                            <div class="row g-3 mb-3">
+                                                <div class="col-md-6">
+                                                    <label for="feedbackName" class="form-label small fw-bold">Your Name / Call Sign</label>
+                                                    <input type="text" class="form-control form-control-sm" id="feedbackName" placeholder="e.g. Capt. Bob / N890GF">
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label for="feedbackEmail" class="form-label small fw-bold">Your Email Address</label>
+                                                    <input type="email" class="form-control form-control-sm" id="feedbackEmail" placeholder="pilot@example.com">
+                                                    <div class="form-text" style="font-size: 0.72rem;">Optional, if you would like a reply back.</div>
+                                                </div>
+                                            </div>
+
+                                            <div class="row g-3 mb-3">
+                                                <div class="col-md-6">
+                                                    <label for="feedbackSubject" class="form-label small fw-bold">Subject Line</label>
+                                                    <div class="input-group input-group-sm">
+                                                        <span class="input-group-text bg-light text-muted"><i class="bi bi-tag-fill"></i></span>
+                                                        <input type="text" class="form-control bg-light" id="feedbackSubject" value="SkyArt Feedback" readonly>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label for="feedbackCategory" class="form-label small fw-bold">Category</label>
+                                                    <select class="form-select form-select-sm" id="feedbackCategory">
+                                                        <option value="General" selected>💬 General Feedback &amp; Praise</option>
+                                                        <option value="Feature Request">✨ New Feature Request</option>
+                                                        <option value="Bug Report">🐛 Bug Report / Issue</option>
+                                                        <option value="ForeFlight & Avionics">📲 ForeFlight &amp; Avionics</option>
+                                                        <option value="Artwork & Presets">🎨 Artwork &amp; Presets</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+
+                                            <div class="mb-3">
+                                                <label for="feedbackMessage" class="form-label small fw-bold">Feedback Message <span class="text-danger">*</span></label>
+                                                <textarea class="form-control" id="feedbackMessage" rows="5" placeholder="Write your feedback, questions, or ideas here..." required minlength="4"></textarea>
+                                            </div>
+
+                                            <div class="form-check mb-3">
+                                                <input class="form-check-input" type="checkbox" id="feedbackIncludeDiagnostics" checked>
+                                                <label class="form-check-label small text-muted" for="feedbackIncludeDiagnostics">
+                                                    Include current flight plan specs (active shape, waypoint count, speed KTAS, turn radius, departure/arrival airport) to assist troubleshooting.
+                                                </label>
+                                            </div>
+
+                                            <div id="feedbackStatusAlert" class="d-none alert py-2 px-3 small mb-3" role="alert"></div>
+
+                                            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 pt-2 border-top">
+                                                <div class="d-flex gap-2">
+                                                    <button type="submit" id="feedbackSubmitBtn" class="btn btn-primary btn-sm px-4">
+                                                        <i class="bi bi-send-fill me-1"></i> Send Feedback
+                                                    </button>
+                                                    <button type="button" id="feedbackMailtoBtn" class="btn btn-outline-secondary btn-sm px-3">
+                                                        <i class="bi bi-envelope-arrow-up me-1"></i> Open in Email App
+                                                    </button>
+                                                </div>
+                                                <div class="small text-muted">
+                                                    Delivers to: <strong class="text-dark">vans.rv7.pilot@gmail.com</strong>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+
                         </div>
                     </div>
                 </div>
             </div>
             <div class="modal-footer bg-light py-2 px-4 d-flex justify-content-between align-items-center">
-                <span class="text-muted small">
-                    Fly safe, have fun, and share your SkyArt with the aviation community! ✈️
-                </span>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="text-muted small">
+                        Fly safe, have fun, and share your SkyArt with the aviation community! ✈️
+                    </span>
+                    <button type="button" class="btn btn-outline-primary btn-sm px-2 py-1 ms-2" id="openFeedbackFromFooterBtn" style="font-size: 0.78rem;">
+                        <i class="bi bi-chat-heart me-1"></i> Send Feedback
+                    </button>
+                </div>
                 <button type="button" class="btn btn-primary btn-sm px-3" data-bs-dismiss="modal">
                     Got it, Let's Fly!
                 </button>
