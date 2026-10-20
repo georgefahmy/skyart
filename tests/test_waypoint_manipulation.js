@@ -380,6 +380,36 @@ for (let i = 0; i < tracedStroke.length; i++) {
 mockWindow.removeTraceOverlay();
 console.log("✅ Test 9 Passed: Tracing over overlay preserves template position, dimensions, and path alignment perfectly.");
 
+// --- Test 10: Text-to-Sky Art Multi-Font Support & Smooth Cursive Fonts ---
+console.log("\n👉 Test 10: Multi-font support with smooth cursive fonts and stick font...");
+assert(mockWindow.TEXT_FONTS, "TEXT_FONTS must be defined");
+const fontKeys = Object.keys(mockWindow.TEXT_FONTS);
+assert(fontKeys.length >= 10, `Expected at least 10 font options, found ${fontKeys.length}`);
+
+// Verify smooth cursive fonts
+assert(mockWindow.TEXT_FONTS['pacifico'], "Pacifico font must be present");
+assert.strictEqual(mockWindow.TEXT_FONTS['pacifico'].cursive, true, "Pacifico must be flagged as cursive");
+assert(mockWindow.TEXT_FONTS['dancing'], "Dancing Script font must be present");
+assert.strictEqual(mockWindow.TEXT_FONTS['dancing'].cursive, true, "Dancing Script must be flagged as cursive");
+assert(mockWindow.TEXT_FONTS['greatvibes'], "Great Vibes font must be present");
+assert.strictEqual(mockWindow.TEXT_FONTS['greatvibes'].cursive, true, "Great Vibes must be flagged as cursive");
+
+// Verify block, serif, mono, and stick fonts
+assert(mockWindow.TEXT_FONTS['bebas'], "Bebas Neue block font must be present");
+assert(mockWindow.TEXT_FONTS['montserrat'], "Montserrat modern sans font must be present");
+assert(mockWindow.TEXT_FONTS['courier'], "Courier Prime monospace font must be present");
+assert(mockWindow.TEXT_FONTS['stick'], "Aviation Stick font must be present");
+
+// Test stick text art generation
+getOrCreateElement('textFontSelect').value = 'stick';
+getOrCreateElement('textStyleStick').checked = true;
+mockWindow.generateTextArt('FLY');
+assert.strictEqual(ArtState.sourceType, 'text', "ArtState.sourceType must be 'text'");
+assert(ArtState.basePoints && ArtState.basePoints.length >= 4, "Stick font must generate valid base points for 'FLY'");
+assert(ArtState.projectedPoints && ArtState.projectedPoints.length >= 4, "Projected points must be updated for 'FLY'");
+
+console.log("✅ Test 10 Passed: Text-to-Sky Art multi-font registry configured with smooth cursive fonts and generation operates seamlessly.");
+
 console.log("\n🎉 All Waypoint Manipulation & Closed-Loop tests PASSED successfully!\n");
 
 

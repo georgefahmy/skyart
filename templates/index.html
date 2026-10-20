@@ -17,6 +17,11 @@
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
+    <!-- Google Fonts for Text-to-Sky Art -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cinzel:wght@700&family=Courier+Prime:wght@700&family=Dancing+Script:wght@700&family=Great+Vibes&family=Montserrat:wght@800&family=Oswald:wght@700&family=Pacifico&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+
     <!-- Dark Mode Styles -->
     <link rel="stylesheet" href="/static/css/dark_mode.css">
 
@@ -190,10 +195,28 @@
                                 </ul>
                             </div>
 
-                            <label class="form-label small fw-bold text-muted mb-1">Text-to-Sky Art</label>
-                            <div class="input-group input-group-sm mb-1">
-                                <input type="text" id="textArtInput" class="form-control text-uppercase" placeholder="e.g. N12345, HI, PILOT" maxlength="36">
-                                <button class="btn btn-outline-primary" type="button" id="textArtBtn">Generate</button>
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <label class="form-label small fw-bold text-muted mb-0" for="textArtInput">Text-to-Sky Art</label>
+                            </div>
+                            <div class="input-group input-group-sm mb-2">
+                                <input type="text" id="textArtInput" class="form-control" placeholder="e.g. Fly, SkyArt, N12345" maxlength="36">
+                                <button class="btn btn-primary" type="button" id="textArtBtn">Generate</button>
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label text-muted fw-bold mb-1" for="textFontSelect" style="font-size: 0.72rem;">Font Style:</label>
+                                <select id="textFontSelect" class="form-select form-select-sm" style="font-size: 0.78rem;">
+                                    <option value="pacifico" style="font-family: 'Pacifico', cursive;" selected>Pacifico (Smooth Cursive)</option>
+                                    <option value="dancing" style="font-family: 'Dancing Script', cursive;">Dancing Script (Flowing Script)</option>
+                                    <option value="greatvibes" style="font-family: 'Great Vibes', cursive;">Great Vibes (Elegant Calligraphy)</option>
+                                    <option value="bebas" style="font-family: 'Bebas Neue', sans-serif;">Bebas Neue (Aviation Block)</option>
+                                    <option value="montserrat" style="font-family: 'Montserrat', sans-serif;">Montserrat (Modern Bold)</option>
+                                    <option value="oswald" style="font-family: 'Oswald', sans-serif;">Oswald (Condensed Sans)</option>
+                                    <option value="playfair" style="font-family: 'Playfair Display', serif;">Playfair Display (Classic Serif)</option>
+                                    <option value="cinzel" style="font-family: 'Cinzel', serif;">Cinzel (Roman Classical)</option>
+                                    <option value="courier" style="font-family: 'Courier Prime', monospace;">Courier Prime (Flight Monospace)</option>
+                                    <option value="sans" style="font-family: sans-serif;">Standard Sans-Serif</option>
+                                    <option value="stick" style="font-family: monospace;">Aviation Stick (Low Waypoints)</option>
+                                </select>
                             </div>
                             <div class="d-flex align-items-center gap-3 mb-1" style="font-size: 0.75rem;">
                                 <span class="text-muted fw-bold">Style:</span>

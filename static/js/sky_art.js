@@ -4592,63 +4592,127 @@
         }
     }
 
+    // --- Text Fonts Registry (~10 Distinct Fonts + Built-in Stick) ---
+    const TEXT_FONTS = {
+        'pacifico': { name: 'Pacifico', family: "'Pacifico', cursive", cursive: true, weight: '400', loadSpec: '400 100px Pacifico' },
+        'dancing': { name: 'Dancing Script', family: "'Dancing Script', cursive", cursive: true, weight: '700', loadSpec: '700 100px "Dancing Script"' },
+        'greatvibes': { name: 'Great Vibes', family: "'Great Vibes', cursive", cursive: true, weight: '400', loadSpec: '400 100px "Great Vibes"' },
+        'bebas': { name: 'Bebas Neue', family: "'Bebas Neue', sans-serif", cursive: false, weight: '400', loadSpec: '400 100px "Bebas Neue"' },
+        'montserrat': { name: 'Montserrat', family: "'Montserrat', sans-serif", cursive: false, weight: '800', loadSpec: '800 100px Montserrat' },
+        'oswald': { name: 'Oswald', family: "'Oswald', sans-serif", cursive: false, weight: '700', loadSpec: '700 100px Oswald' },
+        'playfair': { name: 'Playfair Display', family: "'Playfair Display', serif", cursive: false, weight: '700', loadSpec: '700 100px "Playfair Display"' },
+        'cinzel': { name: 'Cinzel', family: "'Cinzel', serif", cursive: false, weight: '700', loadSpec: '700 100px Cinzel' },
+        'courier': { name: 'Courier Prime', family: "'Courier Prime', monospace", cursive: false, weight: '700', loadSpec: '700 100px "Courier Prime"' },
+        'sans': { name: 'Standard Sans', family: 'sans-serif', cursive: false, weight: 'bold', loadSpec: null },
+        'stick': { name: 'Aviation Stick', family: 'stick', isStickOnly: true }
+    };
+
     // --- Text-to-Sky Art Generator ---
-    function generateTextArt(text) {
+    async function generateTextArt(text) {
         if (!text || text.trim() === '') return;
-        text = text.trim().toUpperCase();
+        text = text.trim();
 
         ArtState.sourceType = 'text';
         ArtState.strokeCount = 0;
         updateStrokeCountBadge();
 
+        const fontSelect = document.getElementById('textFontSelect');
+        const fontKey = (fontSelect && fontSelect.value) ? fontSelect.value : 'pacifico';
+        const fontDef = TEXT_FONTS[fontKey] || TEXT_FONTS['pacifico'];
+
         const isStick = document.getElementById('textStyleStick')?.checked;
-        if (isStick) {
+
+        // If 'stick' font option was specifically selected, use the 7-segment stick generator
+        if (fontDef.isStickOnly || fontKey === 'stick') {
             const stickPts = generateStickTextArt(text);
             if (stickPts && stickPts.length >= 2) {
-                normalizeAndSetBasePoints(stickPts);
+                normalizeAndSetBasePoints(stickPts, true, stickPts.contours);
                 return;
             }
         }
 
-        // Outline Mode: Draws clean outline perimeter of the text with zero solid hatching/zigzags
+        // Pre-load web font if available in browser
+        if (typeof document !== 'undefined' && document.fonts && document.fonts.load && fontDef.loadSpec) {
+            try {
+                await document.fonts.load(fontDef.loadSpec, text);
+            } catch (err) {
+                console.warn("Could not pre-load font:", err);
+            }
+        }
+
+        // Setup offscreen canvas
         const canvas = document.createElement('canvas');
         const fontSize = 100;
-        const charWidth = 85;
-        const totalW = Math.max(600, text.length * charWidth + 140);
-        const totalH = 220;
+        const fontSpec = `${fontDef.weight || 'bold'} ${fontSize}px ${fontDef.family}`;
+
+        // Measure text size with a temporary canvas
+        const measureCanvas = document.createElement('canvas');
+        const mCtx = measureCanvas.getContext('2d');
+        if (mCtx) mCtx.font = fontSpec;
+
+        const isCursive = !!fontDef.cursive;
+        let totalW = 600;
+        let totalH = isCursive ? 260 : 220;
+        let textMetricsList = [];
+
+        if (isCursive) {
+            // Cursive fonts (Pacifico, Dancing Script, Great Vibes) are rendered connectedly
+            // so letters flow smoothly into each other
+            const measuredWidth = mCtx ? mCtx.measureText(text).width : (text.length * 75);
+            totalW = Math.max(600, Math.round(measuredWidth + 180));
+        } else {
+            // Non-cursive fonts have generous letter spacing so individual letter outlines don't collide
+            const letterSpacing = fontDef.letterSpacing !== undefined ? fontDef.letterSpacing : 28;
+            const chars = text.split('');
+            let totalCharsWidth = 0;
+            textMetricsList = chars.map(ch => {
+                const w = mCtx ? mCtx.measureText(ch).width : 70;
+                totalCharsWidth += w;
+                return { ch, w };
+            });
+            totalCharsWidth += (chars.length - 1) * letterSpacing;
+            totalW = Math.max(600, Math.round(totalCharsWidth + 160));
+        }
 
         canvas.width = totalW;
         canvas.height = totalH;
         const ctx = canvas.getContext('2d');
+        if (!ctx) return;
 
         ctx.fillStyle = '#000000';
-        ctx.font = `bold ${fontSize}px sans-serif`;
+        ctx.font = fontSpec;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        // Draw each letter with generous spacing so outlines don't merge into each other
-        const letterSpacing = 28;
-        const chars = text.split('');
-        let totalTextWidth = 0;
-        const metrics = chars.map(ch => {
-            const w = ctx.measureText(ch).width;
-            totalTextWidth += w;
-            return { ch, w };
-        });
-        totalTextWidth += (chars.length - 1) * letterSpacing;
-
-        let curX = (totalW - totalTextWidth) / 2;
         const baselineY = totalH / 2;
 
-        metrics.forEach(m => {
-            ctx.fillText(m.ch, curX + m.w / 2, baselineY);
-            curX += m.w + letterSpacing;
-        });
+        if (isCursive) {
+            ctx.fillText(text, totalW / 2, baselineY);
+        } else {
+            const letterSpacing = fontDef.letterSpacing !== undefined ? fontDef.letterSpacing : 28;
+            let totalCharsWidth = textMetricsList.reduce((acc, m) => acc + m.w, 0) + (textMetricsList.length - 1) * letterSpacing;
+            let curX = (totalW - totalCharsWidth) / 2;
+            textMetricsList.forEach(m => {
+                ctx.fillText(m.ch, curX + m.w / 2, baselineY);
+                curX += m.w + letterSpacing;
+            });
+        }
 
+        // If Single-Stroke style mode is checked on a canvas font, trace centerline skeleton
+        if (isStick) {
+            try {
+                traceSingleStrokeCenterline(canvas);
+                return;
+            } catch (err) {
+                console.warn("Single stroke skeletonization failed, falling back to outline:", err);
+            }
+        }
+
+        // Outline Mode: Draws clean outline perimeter
         try {
             const outlinePts = extractOutlineFromCanvas(canvas, { singleObjectOnly: false, includeHoles: true });
             if (outlinePts && outlinePts.length >= 4) {
-                normalizeAndSetBasePoints(outlinePts);
+                normalizeAndSetBasePoints(outlinePts, true, outlinePts.contours);
                 return;
             }
         } catch (e) {
@@ -5935,6 +5999,17 @@
             });
         });
 
+        // Font Style selector change
+        const fontSelect = document.getElementById('textFontSelect');
+        if (fontSelect) {
+            fontSelect.addEventListener('change', () => {
+                const text = textInput?.value;
+                if (text && text.trim().length > 0) {
+                    generateTextArt(text);
+                }
+            });
+        }
+
         // Save Drawing triggers & Modal
         document.getElementById('headerSaveDrawingBtn')?.addEventListener('click', openSaveDrawingModal);
         document.getElementById('dropdownSaveDrawingAction')?.addEventListener('click', (e) => {
@@ -6558,6 +6633,8 @@
     window.setOverlayVisible = setOverlayVisible;
     window.removeTraceOverlay = removeTraceOverlay;
     window.unprojectPoint = unprojectPoint;
+    window.generateTextArt = generateTextArt;
+    window.TEXT_FONTS = TEXT_FONTS;
 
 })();
 
