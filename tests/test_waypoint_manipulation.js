@@ -398,7 +398,9 @@ assert.strictEqual(mockWindow.TEXT_FONTS['greatvibes'].cursive, true, "Great Vib
 assert(mockWindow.TEXT_FONTS['bebas'], "Bebas Neue block font must be present");
 assert(mockWindow.TEXT_FONTS['montserrat'], "Montserrat modern sans font must be present");
 assert(mockWindow.TEXT_FONTS['courier'], "Courier Prime monospace font must be present");
-assert(mockWindow.TEXT_FONTS['stick'], "Aviation Stick font must be present");
+// Verify default font
+getOrCreateElement('textFontSelect').value = '';
+assert.strictEqual(mockWindow.TEXT_FONTS['bebas'].name, 'Bebas Neue', "Bebas Neue must be the aviation block default font");
 
 // Test stick text art generation
 getOrCreateElement('textFontSelect').value = 'stick';
@@ -408,7 +410,7 @@ assert.strictEqual(ArtState.sourceType, 'text', "ArtState.sourceType must be 'te
 assert(ArtState.basePoints && ArtState.basePoints.length >= 4, "Stick font must generate valid base points for 'FLY'");
 assert(ArtState.projectedPoints && ArtState.projectedPoints.length >= 4, "Projected points must be updated for 'FLY'");
 
-console.log("✅ Test 10 Passed: Text-to-Sky Art multi-font registry configured with smooth cursive fonts and generation operates seamlessly.");
+console.log("✅ Test 10 Passed: Text-to-Sky Art multi-font registry configured with Bebas Neue (Aviation Block) default and smooth cursive options.");
 
 console.log("\n🎉 All Waypoint Manipulation & Closed-Loop tests PASSED successfully!\n");
 

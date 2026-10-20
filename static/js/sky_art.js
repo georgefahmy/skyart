@@ -4617,8 +4617,8 @@
         updateStrokeCountBadge();
 
         const fontSelect = document.getElementById('textFontSelect');
-        const fontKey = (fontSelect && fontSelect.value) ? fontSelect.value : 'pacifico';
-        const fontDef = TEXT_FONTS[fontKey] || TEXT_FONTS['pacifico'];
+        const fontKey = (fontSelect && fontSelect.value) ? fontSelect.value : 'bebas';
+        const fontDef = TEXT_FONTS[fontKey] || TEXT_FONTS['bebas'];
 
         const isStick = document.getElementById('textStyleStick')?.checked;
 
