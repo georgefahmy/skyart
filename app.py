@@ -359,40 +359,114 @@ def index():
     return render_template("index.html")
 
 
+def _airport_type_rank(atype):
+    if atype == "large_airport":
+        return 0
+    if atype == "medium_airport":
+        return 1
+    if atype == "small_airport":
+        return 2
+    if atype == "seaplane_base":
+        return 3
+    return 4
+
+
 @app.route("/api/airports/search", methods=["GET"])
 def api_airports_search():
-    """Fast search for airports by ICAO/FAA code, name, or city."""
+    """
+    Search for worldwide international and domestic airports by:
+    - IATA 3-letter code (e.g. LHR, CDG, SFO, SYD)
+    - ICAO 4-letter code (e.g. EGLL, LFPG, KSFO, YSSY)
+    - FAA / local code (e.g. E16, SQL)
+    - City / Municipality (e.g. London, Paris, Tokyo, Sydney)
+    - Airport Name (e.g. Heathrow, Charles de Gaulle, San Martin)
+    - Country Name or Country Code (e.g. United Kingdom, France, Australia, GB, FR, AU)
+    """
     q = request.args.get("q", "").strip().upper()
     if not q or len(q) < 2:
         return jsonify([])
+
     airports = get_airports_summary_list()
-    results = []
+    scored = []
+
     for ap in airports:
         icao = (ap.get("icao") or "").upper()
+        iata = (ap.get("iata") or "").upper()
         faa = (ap.get("faa") or "").upper()
         name = (ap.get("name") or "").upper()
         city = (ap.get("city") or "").upper()
-        if (
-            q == icao
-            or q == faa
-            or icao.startswith(q)
-            or faa.startswith(q)
-            or q in name
-            or q in city
-        ):
-            results.append(
-                {
-                    "icao": ap.get("icao") or ap.get("faa"),
-                    "faa": ap.get("faa"),
-                    "name": ap.get("name"),
-                    "city": ap.get("city"),
-                    "state": ap.get("state"),
-                    "lat": ap.get("lat"),
-                    "lon": ap.get("lon"),
-                }
-            )
-            if len(results) >= 12:
-                break
+        clean_city = city.split("(")[0].strip()
+        country = (ap.get("country") or "").upper()
+        country_name = (ap.get("country_name") or "").upper()
+        keywords = (ap.get("keywords") or "").upper()
+        tr = _airport_type_rank(ap.get("type", ""))
+
+        score = None
+        # 0. Exact IATA code match
+        if q == iata:
+            score = (0, tr, name)
+        # 1. Exact ICAO or FAA code match
+        elif q == icao or q == faa:
+            score = (1, tr, name)
+        # 2. US 3-letter to K-prefix or vice versa (e.g. SFO -> KSFO, KSFO -> SFO)
+        elif len(q) == 3 and (icao == "K" + q or faa == "K" + q):
+            score = (2, tr, name)
+        elif len(q) == 4 and q.startswith("K") and (iata == q[1:] or faa == q[1:]):
+            score = (2, tr, name)
+        # 3. Exact city match (base city name)
+        elif q == clean_city or q == city:
+            score = (3, tr, name)
+        # 4. Code prefix matches
+        elif iata.startswith(q):
+            score = (4, tr, name)
+        elif icao.startswith(q) or faa.startswith(q):
+            score = (5, tr, name)
+        # 5. Exact Country code or full Country name
+        elif q == country or q == country_name:
+            score = (6, tr, name)
+        # 6. City starts with query
+        elif clean_city.startswith(q) or city.startswith(q):
+            score = (7, tr, name)
+        # 7. Airport Name starts with query
+        elif name.startswith(q):
+            score = (8, tr, name)
+        # 8. Individual word in Name starts with query
+        elif any(w.startswith(q) for w in name.split()):
+            score = (9, tr, name)
+        # 9. Country name starts with query
+        elif country_name.startswith(q):
+            score = (10, tr, name)
+        # 10. Substring in city
+        elif q in city:
+            score = (11, tr, name)
+        # 11. Substring in airport name
+        elif q in name:
+            score = (12, tr, name)
+        # 12. Keywords / metadata match
+        elif keywords and (q in [k.strip() for k in keywords.split(",")] or q in keywords):
+            score = (13, tr, name)
+
+        if score is not None:
+            scored.append((score, ap))
+
+    scored.sort(key=lambda x: x[0])
+    results = []
+    for _, ap in scored[:15]:
+        results.append(
+            {
+                "icao": ap.get("icao") or ap.get("faa") or ap.get("iata"),
+                "iata": ap.get("iata"),
+                "faa": ap.get("faa"),
+                "name": ap.get("name"),
+                "city": ap.get("city"),
+                "state": ap.get("state"),
+                "country": ap.get("country"),
+                "country_name": ap.get("country_name"),
+                "type": ap.get("type"),
+                "lat": ap.get("lat"),
+                "lon": ap.get("lon"),
+            }
+        )
     return jsonify(results)
 
 

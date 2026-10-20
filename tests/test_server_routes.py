@@ -20,11 +20,54 @@ class TestServerIntegrity(unittest.TestCase):
         self.assertIn(b'resyncMapRenderers', res.data)
 
     def test_airport_search_api(self):
+        # 1. Domestic local/FAA code lookup (E16 San Martin)
         res = self.client.get('/api/airports/search?q=E16')
         self.assertEqual(res.status_code, 200)
         data = res.get_json()
         self.assertIsInstance(data, list)
-        self.assertTrue(any(a.get('icao') == 'E16' or a.get('faa') == 'E16' for a in data))
+        self.assertTrue(any(a.get('icao') == 'KE16' or a.get('icao') == 'E16' or a.get('faa') == 'E16' for a in data))
+
+        # 2. International IATA code lookup (LHR -> London Heathrow, EGLL)
+        res_lhr = self.client.get('/api/airports/search?q=LHR')
+        self.assertEqual(res_lhr.status_code, 200)
+        data_lhr = res_lhr.get_json()
+        self.assertTrue(len(data_lhr) > 0)
+        top_lhr = data_lhr[0]
+        self.assertEqual(top_lhr.get('icao'), 'EGLL')
+        self.assertEqual(top_lhr.get('iata'), 'LHR')
+        self.assertEqual(top_lhr.get('country'), 'GB')
+        self.assertIn('Heathrow', top_lhr.get('name', ''))
+
+        # 3. International ICAO code lookup (LFPG -> Charles de Gaulle, Paris, France)
+        res_cdg = self.client.get('/api/airports/search?q=LFPG')
+        self.assertEqual(res_cdg.status_code, 200)
+        data_cdg = res_cdg.get_json()
+        self.assertTrue(len(data_cdg) > 0)
+        top_cdg = data_cdg[0]
+        self.assertEqual(top_cdg.get('icao'), 'LFPG')
+        self.assertEqual(top_cdg.get('iata'), 'CDG')
+        self.assertEqual(top_cdg.get('country'), 'FR')
+
+        # 4. Search by international city name (Tokyo -> Haneda RJTT / Narita RJAA)
+        res_tokyo = self.client.get('/api/airports/search?q=Tokyo')
+        self.assertEqual(res_tokyo.status_code, 200)
+        data_tokyo = res_tokyo.get_json()
+        self.assertTrue(any(a.get('icao') in ('RJTT', 'RJAA') for a in data_tokyo))
+
+        # 5. Search by country name (Australia -> YSSY, YPAD, YBBN, etc.)
+        res_au = self.client.get('/api/airports/search?q=Australia')
+        self.assertEqual(res_au.status_code, 200)
+        data_au = res_au.get_json()
+        self.assertTrue(len(data_au) > 0)
+        self.assertTrue(all(a.get('country') == 'AU' for a in data_au))
+
+        # 6. US 3-letter IATA code (SFO -> KSFO)
+        res_sfo = self.client.get('/api/airports/search?q=SFO')
+        self.assertEqual(res_sfo.status_code, 200)
+        data_sfo = res_sfo.get_json()
+        self.assertTrue(len(data_sfo) > 0)
+        self.assertEqual(data_sfo[0].get('icao'), 'KSFO')
+        self.assertEqual(data_sfo[0].get('iata'), 'SFO')
 
     def test_top_search_home_airport_markup(self):
         res = self.client.get('/')

@@ -1707,6 +1707,7 @@
                 type: 'AIRPORT',
                 lat: ArtState.depAirport.lat,
                 lon: ArtState.depAirport.lon,
+                country: ArtState.depAirport.country || '',
                 isAirport: true,
                 isLoopWaypoint: false
             });
@@ -1823,6 +1824,7 @@
                 type: 'AIRPORT',
                 lat: ArtState.arrAirport.lat,
                 lon: ArtState.arrAirport.lon,
+                country: ArtState.arrAirport.country || '',
                 isAirport: true,
                 isLoopWaypoint: false
             });
@@ -4940,7 +4942,7 @@
             xml += `    <waypoint>\n`;
             xml += `      <identifier>${wp.id}</identifier>\n`;
             xml += `      <type>${wp.type}</type>\n`;
-            xml += `      <country-code>${wp.isAirport ? 'US' : ''}</country-code>\n`;
+            xml += `      <country-code>${wp.country || (wp.isAirport ? 'US' : '')}</country-code>\n`;
             xml += `      <lat>${wp.lat.toFixed(6)}</lat>\n`;
             xml += `      <lon>${wp.lon.toFixed(6)}</lon>\n`;
             xml += `      <comment>${wp.name || wp.id}</comment>\n`;
@@ -4957,7 +4959,7 @@
             xml += `      <waypoint-identifier>${wp.id}</waypoint-identifier>\n`;
             xml += `      <waypoint-type>${wp.type}</waypoint-type>\n`;
             if (wp.isAirport) {
-                xml += `      <country-code>US</country-code>\n`;
+                xml += `      <country-code>${wp.country || 'US'}</country-code>\n`;
             }
             xml += `    </route-point>\n`;
         });
@@ -5076,6 +5078,20 @@
             });
     }
 
+    // --- Helper: Format Airport Location Subtitle ---
+    function formatAirportSubtitle(ap) {
+        const parts = [];
+        if (ap.city) parts.push(ap.city);
+        if (ap.state && ap.state !== ap.city && (!ap.country || ap.country === 'US' || ap.country === 'CA' || ap.country === 'AU')) {
+            parts.push(ap.state);
+        }
+        const country = ap.country_name || ap.country;
+        if (country && country !== ap.city) {
+            parts.push(country);
+        }
+        return parts.join(', ');
+    }
+
     // --- Single Airport Input Autocomplete & Resolver ---
     function setupSingleAirportInput(inputId, dropdownId, nameLabelId, onSelectCallback) {
         const inputEl = document.getElementById(inputId);
@@ -5104,8 +5120,11 @@
 
                     let html = '';
                     data.forEach(ap => {
-                        html += `<div class="airport-autocomplete-item" data-lat="${ap.lat}" data-lon="${ap.lon}" data-icao="${ap.icao || ap.faa}" data-name="${ap.name}">
-                            <strong>${ap.icao || ap.faa}</strong> - ${ap.name} <span class="text-muted small">(${ap.city || ''}, ${ap.state || ''})</span>
+                        const icao = ap.icao || ap.faa || ap.iata;
+                        const iataBadge = (ap.iata && ap.iata !== icao) ? `<span class="badge bg-light text-dark border ms-1" style="font-size:0.68rem;">${ap.iata}</span>` : '';
+                        const loc = formatAirportSubtitle(ap);
+                        html += `<div class="airport-autocomplete-item" data-lat="${ap.lat}" data-lon="${ap.lon}" data-icao="${icao}" data-iata="${ap.iata || ''}" data-country="${ap.country || ''}" data-country-name="${ap.country_name || ''}" data-name="${ap.name}">
+                            <strong>${icao}</strong>${iataBadge} - ${ap.name} <span class="text-muted small">(${loc})</span>
                         </div>`;
                     });
                     listEl.innerHTML = html;
@@ -5121,29 +5140,40 @@
             const lat = parseFloat(item.getAttribute('data-lat'));
             const lon = parseFloat(item.getAttribute('data-lon'));
             const icao = item.getAttribute('data-icao');
+            const iata = item.getAttribute('data-iata') || '';
             const name = item.getAttribute('data-name');
+            const country = item.getAttribute('data-country') || '';
+            const country_name = item.getAttribute('data-country-name') || '';
 
             if (!isNaN(lat) && !isNaN(lon)) {
                 inputEl.value = icao;
                 if (nameEl) nameEl.innerText = name;
                 listEl.classList.add('d-none');
-                onSelectCallback({ icao, name, lat, lon });
+                onSelectCallback({ icao, iata, name, country, country_name, lat, lon });
             }
         });
 
-        // Resolve on blur / enter if user just typed an ICAO and pressed Tab/Enter
+        // Resolve on blur / enter if user just typed an ICAO, IATA, or FAA code and pressed Tab/Enter
         function resolveDirectInput() {
             const val = inputEl.value.trim().toUpperCase();
             if (!val || val.length < 2) return;
 
             searchAirports(val, function (data) {
                 if (data && data.length > 0) {
-                    const exact = data.find(a => (a.icao || '').toUpperCase() === val || (a.faa || '').toUpperCase() === val) || data[0];
-                    inputEl.value = exact.icao || exact.faa;
+                    const exact = data.find(a => 
+                        (a.icao || '').toUpperCase() === val || 
+                        (a.iata || '').toUpperCase() === val || 
+                        (a.faa || '').toUpperCase() === val
+                    ) || data[0];
+                    const icao = exact.icao || exact.faa || exact.iata;
+                    inputEl.value = icao;
                     if (nameEl) nameEl.innerText = exact.name;
                     onSelectCallback({
-                        icao: exact.icao || exact.faa,
+                        icao: icao,
+                        iata: exact.iata || '',
                         name: exact.name,
+                        country: exact.country || '',
+                        country_name: exact.country_name || '',
                         lat: exact.lat,
                         lon: exact.lon
                     });
@@ -5194,10 +5224,12 @@
 
                         let html = '';
                         data.forEach(ap => {
-                            const icao = ap.icao || ap.faa;
-                            html += `<div class="airport-autocomplete-item d-flex align-items-center justify-content-between py-1 px-2" data-lat="${ap.lat}" data-lon="${ap.lon}" data-icao="${icao}" data-name="${ap.name}">
-                                <div class="text-truncate flex-grow-1 pe-2" title="${icao} - ${ap.name}">
-                                    <strong>${icao}</strong> - ${ap.name} <span class="text-muted small">(${ap.city || ''}, ${ap.state || ''})</span>
+                            const icao = ap.icao || ap.faa || ap.iata;
+                            const iataBadge = (ap.iata && ap.iata !== icao) ? `<span class="badge bg-light text-dark border ms-1" style="font-size:0.68rem;">${ap.iata}</span>` : '';
+                            const loc = formatAirportSubtitle(ap);
+                            html += `<div class="airport-autocomplete-item d-flex align-items-center justify-content-between py-1 px-2" data-lat="${ap.lat}" data-lon="${ap.lon}" data-icao="${icao}" data-iata="${ap.iata || ''}" data-country="${ap.country || ''}" data-country-name="${ap.country_name || ''}" data-name="${ap.name}">
+                                <div class="text-truncate flex-grow-1 pe-2" title="${icao}${ap.iata ? ' (' + ap.iata + ')' : ''} - ${ap.name}">
+                                    <strong>${icao}</strong>${iataBadge} - ${ap.name} <span class="text-muted small">(${loc})</span>
                                 </div>
                                 <button class="btn btn-outline-primary btn-sm py-0 px-2 set-search-item-home-btn text-nowrap" type="button" title="Set ${icao} as default Home Airport" style="font-size: 0.68rem;">
                                     <i class="bi bi-house-door-fill me-1"></i>Set Home
@@ -5218,13 +5250,16 @@
                 const lat = parseFloat(item.getAttribute('data-lat'));
                 const lon = parseFloat(item.getAttribute('data-lon'));
                 const icao = item.getAttribute('data-icao');
+                const iata = item.getAttribute('data-iata') || '';
                 const name = item.getAttribute('data-name');
+                const country = item.getAttribute('data-country') || '';
+                const country_name = item.getAttribute('data-country-name') || '';
                 if (isNaN(lat) || isNaN(lon)) return;
 
                 if (homeBtn) {
                     e.preventDefault();
                     e.stopPropagation();
-                    saveConfiguredHomeAirport({ icao, name, lat, lon });
+                    saveConfiguredHomeAirport({ icao, iata, name, country, country_name, lat, lon });
                     homeBtn.innerHTML = '<i class="bi bi-check-lg text-success me-1"></i>Saved!';
                     homeBtn.classList.remove('btn-outline-primary');
                     homeBtn.classList.add('btn-success', 'text-white');
@@ -5246,8 +5281,8 @@
                 ArtState.map.setView([lat, lon], 11);
 
                 // Update departure & arrival airport
-                ArtState.depAirport = { icao, name, lat, lon };
-                ArtState.arrAirport = { icao, name, lat, lon };
+                ArtState.depAirport = { icao, iata, name, country, country_name, lat, lon };
+                ArtState.arrAirport = { icao, iata, name, country, country_name, lat, lon };
 
                 const depInput = document.getElementById('depAirportInput');
                 const arrInput = document.getElementById('arrAirportInput');
@@ -5262,7 +5297,7 @@
                 applyTransformations();
 
                 listEl.classList.add('d-none');
-                searchInput.value = `${icao} - ${name}`;
+                searchInput.value = (iata && iata !== icao) ? `${icao} (${iata}) - ${name}` : `${icao} - ${name}`;
             });
 
             document.addEventListener('click', function (e) {
@@ -5384,8 +5419,11 @@
 
                         let html = '';
                         data.forEach(ap => {
-                            html += `<div class="airport-autocomplete-item" data-lat="${ap.lat}" data-lon="${ap.lon}" data-icao="${ap.icao || ap.faa}" data-name="${ap.name}">
-                                <strong>${ap.icao || ap.faa}</strong> - ${ap.name} <span class="text-muted small">(${ap.city || ''}, ${ap.state || ''})</span>
+                            const icao = ap.icao || ap.faa || ap.iata;
+                            const iataBadge = (ap.iata && ap.iata !== icao) ? `<span class="badge bg-light text-dark border ms-1" style="font-size:0.68rem;">${ap.iata}</span>` : '';
+                            const loc = formatAirportSubtitle(ap);
+                            html += `<div class="airport-autocomplete-item" data-lat="${ap.lat}" data-lon="${ap.lon}" data-icao="${icao}" data-iata="${ap.iata || ''}" data-country="${ap.country || ''}" data-country-name="${ap.country_name || ''}" data-name="${ap.name}">
+                                <strong>${icao}</strong>${iataBadge} - ${ap.name} <span class="text-muted small">(${loc})</span>
                             </div>`;
                         });
                         modalList.innerHTML = html;
@@ -5401,17 +5439,20 @@
                 const lat = parseFloat(item.getAttribute('data-lat'));
                 const lon = parseFloat(item.getAttribute('data-lon'));
                 const icao = item.getAttribute('data-icao');
+                const iata = item.getAttribute('data-iata') || '';
                 const name = item.getAttribute('data-name');
+                const country = item.getAttribute('data-country') || '';
+                const country_name = item.getAttribute('data-country-name') || '';
 
                 if (!isNaN(lat) && !isNaN(lon)) {
-                    modalSelectedHome = { icao, name, lat, lon };
+                    modalSelectedHome = { icao, iata, name, country, country_name, lat, lon };
                     document.getElementById('configHomeCurrentBadge').innerText = icao;
                     document.getElementById('configHomeCurrentName').innerText = name;
                     document.getElementById('configHomeCurrentCoords').innerText = `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
                 }
 
                 modalList.classList.add('d-none');
-                modalInput.value = `${icao} - ${name}`;
+                modalInput.value = (iata && iata !== icao) ? `${icao} (${iata}) - ${name}` : `${icao} - ${name}`;
             });
 
             document.addEventListener('click', function (e) {
