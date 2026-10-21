@@ -2052,6 +2052,21 @@
         });
     }
 
+    function handleToggleAutopilotGhost(enabled) {
+        ArtState.showAutopilotGhost = enabled;
+        const check = document.getElementById('showAutopilotGhostCheck');
+        if (check) check.checked = ArtState.showAutopilotGhost;
+        const btn = document.getElementById('mapAutopilotGhostBtn');
+        if (btn) {
+            btn.classList.toggle('active', ArtState.showAutopilotGhost);
+            btn.classList.toggle('btn-warning', ArtState.showAutopilotGhost);
+            btn.classList.toggle('text-dark', ArtState.showAutopilotGhost);
+            btn.classList.toggle('btn-light', !ArtState.showAutopilotGhost);
+        }
+        renderAutopilotGhost();
+        renderRouteOnMap();
+    }
+
     // --- Map Rendering ---
     function clearRenderedRoute() {
         clearAutopilotGhost();
@@ -2454,7 +2469,8 @@
             }
 
             if (pPrev && pNext) {
-                const analysis = analyzeCornerTurn(pPrev, pt, pNext, ArtState.autopilotTurnRadiusNM);
+                const configuredRadius = ArtState.autopilotTurnRadiusNM || 1.0;
+                const analysis = analyzeCornerTurn(pPrev, pt, pNext, configuredRadius);
                 const isOverridden = ArtState.cornerLoopOverrides[idx] !== undefined;
                 const loopActive = isOverridden ? !!ArtState.cornerLoopOverrides[idx] : (analysis.alpha >= ArtState.autopilotMinAngleDeg && ArtState.enableCornerLoopBacks);
                 const isSharp = analysis.alpha >= ArtState.autopilotMinAngleDeg;
@@ -2472,8 +2488,30 @@
                     turnInfo = `<div class="text-muted small mt-1" style="font-size:0.68rem;">Turn: ${Math.round(analysis.alpha)}° (Gentle)</div>`;
                 }
 
+                // Autopilot Turn Radius Display (Active when "Preview Autopilot Turn Cut" is turned ON)
+                if (ArtState.showAutopilotGhost) {
+                    const radiusDetail = analysis.isClamped
+                        ? `${analysis.effectiveRadius.toFixed(2)} NM <span class="badge bg-secondary" style="font-size:0.6rem;">Clamped from ${configuredRadius.toFixed(1)} NM</span>`
+                        : `${configuredRadius.toFixed(1)} NM`;
+
+                    if (loopActive) {
+                        turnInfo += `<div class="mt-1 pt-1" style="border-top:1px dashed rgba(25,135,84,0.45); font-size:0.72rem; line-height:1.35;">` +
+                            `<div class="fw-bold text-success"><i class="bi bi-arrow-repeat me-1"></i>Autopilot Loop-Back (Turn Cut Avoided)</div>` +
+                            `<div>Turn Radius: <strong>${configuredRadius.toFixed(1)} NM</strong></div>` +
+                            `<div class="text-muted" style="font-size:0.68rem;">Corner preserved via 270° teardrop loop · Nominal Cut: ${cutDistToDisplay.toFixed(2)} NM</div>` +
+                            `</div>`;
+                    } else {
+                        turnInfo += `<div class="mt-1 pt-1" style="border-top:1px dashed rgba(253,126,20,0.45); font-size:0.72rem; line-height:1.35;">` +
+                            `<div class="fw-bold" style="color:#fd7e14;"><i class="bi bi-bezier2 me-1"></i>Autopilot Turn Cut</div>` +
+                            `<div>Turn Radius: <strong>${radiusDetail}</strong></div>` +
+                            `<div>Turn Angle: <strong>${Math.round(analysis.alpha)}°</strong> · Corner Cut: <strong>${cutDistToDisplay.toFixed(2)} NM</strong> <span class="text-muted">(Lead: ${analysis.effectiveLead.toFixed(2)} NM)</span></div>` +
+                            (analysis.isClamped ? `<div class="text-warning" style="font-size:0.68rem;"><i class="bi bi-exclamation-circle me-1"></i>Radius clamped to fit short leg</div>` : '') +
+                            `</div>`;
+                    }
+                }
+
                 if (legInDist !== null && legOutDist !== null && !loopActive) {
-                    if (analysis.isClamped) {
+                    if (analysis.isClamped && !ArtState.showAutopilotGhost) {
                         legWarning = `<div class="text-warning small mt-1" style="font-size:0.7rem;"><i class="bi bi-info-circle me-1"></i>Unconstrained AP lead (${analysis.dLead.toFixed(2)} NM) exceeds leg length. Turn radius clamped to ${analysis.effectiveRadius.toFixed(2)} NM to fit.</div>`;
                     }
                 }
@@ -5960,20 +5998,6 @@
         document.getElementById('mapReverseBtn')?.addEventListener('click', handleReverseRoute);
 
         // Autopilot Lead Turn Preview (Ghost Path) Toggles
-        function handleToggleAutopilotGhost(enabled) {
-            ArtState.showAutopilotGhost = enabled;
-            const check = document.getElementById('showAutopilotGhostCheck');
-            if (check) check.checked = ArtState.showAutopilotGhost;
-            const btn = document.getElementById('mapAutopilotGhostBtn');
-            if (btn) {
-                btn.classList.toggle('active', ArtState.showAutopilotGhost);
-                btn.classList.toggle('btn-warning', ArtState.showAutopilotGhost);
-                btn.classList.toggle('text-dark', ArtState.showAutopilotGhost);
-                btn.classList.toggle('btn-light', !ArtState.showAutopilotGhost);
-            }
-            renderAutopilotGhost();
-        }
-
         document.getElementById('showAutopilotGhostCheck')?.addEventListener('change', (e) => {
             handleToggleAutopilotGhost(!!e.target.checked);
         });
@@ -6783,6 +6807,8 @@
     window.generateTextArt = generateTextArt;
     window.TEXT_FONTS = TEXT_FONTS;
     window.enforceMinLegLength = enforceMinLegLength;
+    window.handleToggleAutopilotGhost = handleToggleAutopilotGhost;
+    window.renderRouteOnMap = renderRouteOnMap;
 
 })();
 

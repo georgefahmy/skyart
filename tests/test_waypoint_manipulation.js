@@ -474,6 +474,70 @@ console.log(`   Heart R=1.0 NM mode: ${ArtState.projectedPoints.length} points, 
 
 console.log("✅ Test 11 Passed: Autopilot minimum leg length enforcement dynamically adjusts waypoints so every leg >= turn radius, with toggle for hand flying.");
 
+// --- Test 12: Waypoint Marker Tooltips Display Turn Radius when Autopilot Cut is Turned ON ---
+console.log("\n👉 Test 12: Waypoint marker tooltips display turn radius for each corner when Autopilot Cut is turned on...");
+
+// 1. Reset state with diamond preset
+ArtState.enforceMinTurnRadiusLegs = false;
+ArtState.enableCornerLoopBacks = false;
+ArtState.cornerLoopOverrides = {};
+ArtState.autopilotTurnRadiusNM = 1.0;
+mockWindow.loadPreset('diamond');
+
+// 2. When showAutopilotGhost is OFF, tooltip should not have the dedicated Autopilot Turn Cut block
+mockWindow.handleToggleAutopilotGhost(false);
+const markersGhostOff = ArtState.mapMarkers.filter(m => m.opts && m.opts.draggable);
+assert(markersGhostOff.length >= 4, "Diamond must have corner markers");
+assert(!markersGhostOff[0].tooltipContent.includes('Autopilot Turn Cut'), "Tooltip must not include Autopilot Turn Cut when ghost is OFF");
+
+// 3. Turn ON Autopilot Cut (Ghost Path)
+mockWindow.handleToggleAutopilotGhost(true);
+assert.strictEqual(ArtState.showAutopilotGhost, true, "ArtState.showAutopilotGhost must be true");
+
+const markersGhostOn = ArtState.mapMarkers.filter(m => m.opts && m.opts.draggable);
+for (let i = 0; i < 4; i++) {
+    const tooltip = markersGhostOn[i].tooltipContent;
+    assert(tooltip, `WP${i + 1} marker must have tooltip content`);
+    assert(tooltip.includes('Autopilot Turn Cut'), `WP${i + 1} tooltip must contain 'Autopilot Turn Cut' section`);
+    assert(tooltip.includes('Turn Radius:'), `WP${i + 1} tooltip must display 'Turn Radius:'`);
+    assert(tooltip.includes('1.0 NM'), `WP${i + 1} tooltip must reflect configured 1.0 NM radius`);
+}
+console.log("   Corner tooltips properly display 'Turn Radius: 1.0 NM' and 'Autopilot Turn Cut' details for all corners.");
+
+// 4. Test corner with loop-back override: turn radius must still be displayed
+ArtState.cornerLoopOverrides[2] = true; // Loop-back on WP3
+mockWindow.renderRouteOnMap();
+const markersWithLoop = ArtState.mapMarkers.filter(m => m.opts && m.opts.draggable);
+const wp3LoopTooltip = markersWithLoop[2].tooltipContent;
+assert(wp3LoopTooltip.includes('Turn Radius:'), "WP3 tooltip with loop-back active must display Turn Radius");
+assert(wp3LoopTooltip.includes('1.0 NM'), "WP3 tooltip must display configured 1.0 NM turn radius");
+assert(wp3LoopTooltip.includes('Autopilot Loop-Back'), "WP3 tooltip must reflect loop-back status");
+console.log("   Corner tooltips properly display Turn Radius on loop-back preserved corners as well.");
+ArtState.cornerLoopOverrides = {};
+
+// 4. Update Autopilot Turn Radius to 1.8 NM and re-render
+ArtState.autopilotTurnRadiusNM = 1.8;
+mockWindow.renderRouteOnMap();
+const updatedMarkers = ArtState.mapMarkers.filter(m => m.opts && m.opts.draggable);
+assert(updatedMarkers[1].tooltipContent.includes('1.8 NM'), "Tooltip must dynamically reflect updated turn radius (1.8 NM)");
+console.log("   Dynamic update verified: tooltips reflect adjusted turn radius (1.8 NM).");
+
+// 5. Test clamped turn radius scenario on small shape with large turn radius
+ArtState.sizeNM = 2.0;
+ArtState.autopilotTurnRadiusNM = 2.5;
+mockWindow.applyTransformations();
+const clampedMarkers = ArtState.mapMarkers.filter(m => m.opts && m.opts.draggable);
+assert(clampedMarkers[1].tooltipContent.includes('Clamped'), "Tooltip must indicate when turn radius is clamped to fit leg");
+console.log("   Clamped radius detection verified in tooltip when turn radius exceeds leg bounds.");
+
+// 6. Turn OFF Autopilot Cut - verify tooltips update immediately without Autopilot Turn Cut section
+mockWindow.handleToggleAutopilotGhost(false);
+const finalMarkers = ArtState.mapMarkers.filter(m => m.opts && m.opts.draggable);
+assert(!finalMarkers[1].tooltipContent.includes('Autopilot Turn Cut'), "Tooltip must cleanly hide Autopilot Turn Cut section when turned off");
+console.log("   Toggling off cleanly removes turn cut details from tooltips.");
+
+console.log("✅ Test 12 Passed: Waypoint tooltips dynamically display accurate turn radius (nominal and clamped) for each corner when Autopilot Cut preview is turned on.");
+
 console.log("\n🎉 All Waypoint Manipulation & Closed-Loop tests PASSED successfully!\n");
 
 
