@@ -602,6 +602,21 @@
                             </div>
                         </div>
 
+                        <!-- Toggle 3: Enforce Minimum Leg Length >= Turn Radius -->
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <label class="form-check-label small fw-bold text-success mb-0" for="enforceMinTurnRadiusLegsCheck">
+                                    <i class="bi bi-shield-check me-1"></i> Enforce Min Leg Length (&ge; Turn Radius)
+                                </label>
+                                <div class="text-muted" style="font-size: 0.7rem;">
+                                    Modifies waypoints so every leg is &ge; <span id="minLegRadiusLabel">1.0 NM</span> (allows autopilot to cut corners without overshooting). Toggle off to hand fly.
+                                </div>
+                            </div>
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" id="enforceMinTurnRadiusLegsCheck">
+                            </div>
+                        </div>
+
                         <!-- Autopilot Turn Radius Slider -->
                         <div>
                             <div class="d-flex justify-content-between align-items-center mb-1">

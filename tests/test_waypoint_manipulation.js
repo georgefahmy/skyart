@@ -268,6 +268,7 @@ console.log("✅ Test 6 Passed: dragend re-renders route and recalculates marker
 
 // --- Test 7: Heart Preset Orientation (Lobes at Top / North, Tip at Bottom / South) ---
 console.log("\n👉 Test 7: Preset 'heart' default orientation has lobes at top (North) and tip at bottom (South)...");
+ArtState.enforceMinTurnRadiusLegs = false;
 mockWindow.loadPreset('heart');
 const heartPts = ArtState.projectedPoints;
 assert(heartPts.length > 50, "Heart preset should have a dense set of points");
@@ -411,6 +412,67 @@ assert(ArtState.basePoints && ArtState.basePoints.length >= 4, "Stick font must 
 assert(ArtState.projectedPoints && ArtState.projectedPoints.length >= 4, "Projected points must be updated for 'FLY'");
 
 console.log("✅ Test 10 Passed: Text-to-Sky Art multi-font registry configured with Bebas Neue (Aviation Block) default and smooth cursive options.");
+
+// --- Test 11: Autopilot Turn Radius Minimum Leg Length Enforcement & Toggle ---
+console.log("\n👉 Test 11: Enforce minimum leg length >= autopilot turn radius...");
+// 1. Verify function and ArtState property
+assert.strictEqual(typeof mockWindow.enforceMinLegLength, 'function', "enforceMinLegLength must be exported on window");
+
+function calcDistNM(p1, p2) {
+    const dLat = (p2.lat - p1.lat) * 60;
+    const dLon = (p2.lon - p1.lon) * 60 * Math.cos(p1.lat * Math.PI / 180);
+    return Math.hypot(dLat, dLon);
+}
+
+// 2. Load RV-7 with toggle OFF (hand flying mode): should have short legs < 1.0 NM
+ArtState.enforceMinTurnRadiusLegs = false;
+ArtState.sizeNM = 12;
+mockWindow.loadPreset('rv7');
+mockWindow.applyTransformations();
+const rawLegDists = [];
+for (let i = 1; i < ArtState.projectedPoints.length; i++) {
+    rawLegDists.push(calcDistNM(ArtState.projectedPoints[i-1], ArtState.projectedPoints[i]));
+}
+const rawMinLeg = Math.min(...rawLegDists);
+assert(rawMinLeg < 0.5, `Hand-flying raw path must permit fine detail legs < 0.5 NM (found min: ${rawMinLeg.toFixed(3)})`);
+console.log(`   Hand-flying mode: ${ArtState.projectedPoints.length} points, min leg: ${rawMinLeg.toFixed(3)} NM (< 1.0 NM allowed)`);
+
+// 3. Enable Enforce Min Leg Length toggle with R = 1.0 NM: ALL legs must be >= 1.0 NM
+ArtState.enforceMinTurnRadiusLegs = true;
+ArtState.autopilotTurnRadiusNM = 1.0;
+mockWindow.applyTransformations();
+const apLegDists = [];
+for (let i = 1; i < ArtState.projectedPoints.length; i++) {
+    apLegDists.push(calcDistNM(ArtState.projectedPoints[i-1], ArtState.projectedPoints[i]));
+}
+const apMinLeg = Math.min(...apLegDists);
+assert(apMinLeg >= 1.0 - 1e-3, `Every leg in autopilot path must be >= 1.0 NM (found min: ${apMinLeg.toFixed(3)})`);
+console.log(`   Autopilot R=1.0 NM mode: ${ArtState.projectedPoints.length} points, min leg: ${apMinLeg.toFixed(3)} NM (100% >= 1.0 NM)`);
+
+// 4. Test higher turn radius R = 1.5 NM (higher speed aircraft): ALL legs must be >= 1.5 NM
+ArtState.autopilotTurnRadiusNM = 1.5;
+mockWindow.applyTransformations();
+const fastLegDists = [];
+for (let i = 1; i < ArtState.projectedPoints.length; i++) {
+    fastLegDists.push(calcDistNM(ArtState.projectedPoints[i-1], ArtState.projectedPoints[i]));
+}
+const fastMinLeg = Math.min(...fastLegDists);
+assert(fastMinLeg >= 1.5 - 1e-3, `Every leg with R=1.5 NM must be >= 1.5 NM (found min: ${fastMinLeg.toFixed(3)})`);
+console.log(`   Autopilot R=1.5 NM mode: ${ArtState.projectedPoints.length} points, min leg: ${fastMinLeg.toFixed(3)} NM (100% >= 1.5 NM)`);
+
+// 5. Test Heart preset with R = 1.0 NM: all legs must be >= 1.0 NM
+ArtState.autopilotTurnRadiusNM = 1.0;
+mockWindow.loadPreset('heart');
+mockWindow.applyTransformations();
+const heartLegDists = [];
+for (let i = 1; i < ArtState.projectedPoints.length; i++) {
+    heartLegDists.push(calcDistNM(ArtState.projectedPoints[i-1], ArtState.projectedPoints[i]));
+}
+const heartMinLeg = Math.min(...heartLegDists);
+assert(heartMinLeg >= 1.0 - 1e-3, `Heart preset with R=1.0 NM must have all legs >= 1.0 NM (found min: ${heartMinLeg.toFixed(3)})`);
+console.log(`   Heart R=1.0 NM mode: ${ArtState.projectedPoints.length} points, min leg: ${heartMinLeg.toFixed(3)} NM (100% >= 1.0 NM)`);
+
+console.log("✅ Test 11 Passed: Autopilot minimum leg length enforcement dynamically adjusts waypoints so every leg >= turn radius, with toggle for hand flying.");
 
 console.log("\n🎉 All Waypoint Manipulation & Closed-Loop tests PASSED successfully!\n");
 

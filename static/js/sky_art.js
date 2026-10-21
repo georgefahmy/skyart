@@ -187,6 +187,7 @@
         autopilotMinAngleDeg: 60,
         showAutopilotGhost: false,
         enableCornerLoopBacks: false,
+        enforceMinTurnRadiusLegs: false,
         cornerLoopOverrides: {},
         autopilotGhostPolyline: null,
         loopBackMarkers: [],
@@ -228,6 +229,7 @@
                 autopilotMinAngleDeg: ArtState.autopilotMinAngleDeg,
                 showAutopilotGhost: ArtState.showAutopilotGhost,
                 enableCornerLoopBacks: ArtState.enableCornerLoopBacks,
+                enforceMinTurnRadiusLegs: ArtState.enforceMinTurnRadiusLegs,
                 cornerLoopOverrides: { ...ArtState.cornerLoopOverrides }
             };
         },
@@ -293,6 +295,7 @@
             if (s.autopilotMinAngleDeg !== undefined) ArtState.autopilotMinAngleDeg = s.autopilotMinAngleDeg;
             if (s.showAutopilotGhost !== undefined) ArtState.showAutopilotGhost = !!s.showAutopilotGhost;
             if (s.enableCornerLoopBacks !== undefined) ArtState.enableCornerLoopBacks = !!s.enableCornerLoopBacks;
+            if (s.enforceMinTurnRadiusLegs !== undefined) ArtState.enforceMinTurnRadiusLegs = !!s.enforceMinTurnRadiusLegs;
             if (s.cornerLoopOverrides !== undefined) ArtState.cornerLoopOverrides = { ...s.cornerLoopOverrides };
             updateStrokeCountBadge();
 
@@ -415,6 +418,12 @@
 
         const loopCheck = document.getElementById('enableCornerLoopBacksCheck');
         if (loopCheck) loopCheck.checked = !!ArtState.enableCornerLoopBacks;
+
+        const minLegCheck = document.getElementById('enforceMinTurnRadiusLegsCheck');
+        if (minLegCheck) minLegCheck.checked = !!ArtState.enforceMinTurnRadiusLegs;
+
+        const minLegLabel = document.getElementById('minLegRadiusLabel');
+        if (minLegLabel) minLegLabel.innerText = `${(ArtState.autopilotTurnRadiusNM || 1.0).toFixed(1)} NM`;
 
         const apSlider = document.getElementById('autopilotRadiusSlider');
         if (apSlider) apSlider.value = ArtState.autopilotTurnRadiusNM;
@@ -1608,6 +1617,96 @@
         return result;
     }
 
+    // --- Enforce Minimum Leg Length (Autopilot Turn Radius Compliance) ---
+    // If a leg length is shorter than the aircraft's autopilot turn radius,
+    // modifies and consolidates waypoints to guarantee that every leg is at least the turn radius,
+    // allowing the avionics to execute proper corner-cutting without overshooting.
+    function enforceMinLegLength(points, minLegNM) {
+        if (!points || points.length <= 1) return points;
+        minLegNM = Math.max(0.1, Number(minLegNM) || 1.0);
+
+        const isClosed = points.length >= 3 &&
+            Math.abs(points[0].lat - points[points.length - 1].lat) < 0.0008 &&
+            Math.abs(points[0].lon - points[points.length - 1].lon) < 0.0008;
+
+        const base = isClosed ? points.slice(0, -1) : points.slice();
+        if (base.length <= 1) return points;
+
+        const result = [base[0]];
+        let currentAnchor = base[0];
+        let i = 1;
+
+        while (i < base.length) {
+            let found = false;
+            for (let j = i; j < base.length; j++) {
+                const d = calculateDistanceNM(currentAnchor.lat, currentAnchor.lon, base[j].lat, base[j].lon);
+                if (d >= minLegNM - 1e-4) {
+                    result.push(base[j]);
+                    currentAnchor = base[j];
+                    i = j + 1;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) break;
+        }
+
+        if (isClosed) {
+            // Closed loop: ensure the closing leg back to result[0] is also >= minLegNM
+            while (result.length > 2 && calculateDistanceNM(result[result.length - 1].lat, result[result.length - 1].lon, result[0].lat, result[0].lon) < minLegNM - 1e-4) {
+                result.pop();
+            }
+            if (result.length < 3) return points;
+            result.push({ lat: result[0].lat, lon: result[0].lon });
+        } else {
+            // Open polyline: ensure endpoint is at least minLegNM from previous point
+            const lastOriginal = base[base.length - 1];
+            const lastResult = result[result.length - 1];
+            const endDist = calculateDistanceNM(lastResult.lat, lastResult.lon, lastOriginal.lat, lastOriginal.lon);
+
+            if (endDist >= minLegNM - 1e-4) {
+                result.push(lastOriginal);
+            } else if (result.length > 1) {
+                const prev = result[result.length - 2];
+                const dPrevToEnd = calculateDistanceNM(prev.lat, prev.lon, lastOriginal.lat, lastOriginal.lon);
+                if (dPrevToEnd >= minLegNM - 1e-4) {
+                    result[result.length - 1] = lastOriginal;
+                } else {
+                    const dLat = (lastOriginal.lat - prev.lat) * 60;
+                    const cosLat = Math.cos(toRad(prev.lat));
+                    const dLon = (lastOriginal.lon - prev.lon) * 60 * cosLat;
+                    const d = Math.hypot(dLat, dLon);
+                    if (d > 0.001) {
+                        const factor = minLegNM / d;
+                        result[result.length - 1] = {
+                            lat: prev.lat + (dLat * factor) / 60,
+                            lon: prev.lon + (dLon * factor) / (60 * cosLat)
+                        };
+                    }
+                }
+            } else {
+                const dLat = (lastOriginal.lat - result[0].lat) * 60;
+                const cosLat = Math.cos(toRad(result[0].lat));
+                const dLon = (lastOriginal.lon - result[0].lon) * 60 * cosLat;
+                const d = Math.hypot(dLat, dLon);
+                if (d > 0.001) {
+                    const factor = minLegNM / d;
+                    result.push({
+                        lat: result[0].lat + (dLat * factor) / 60,
+                        lon: result[0].lon + (dLon * factor) / (60 * cosLat)
+                    });
+                } else {
+                    result.push({
+                        lat: result[0].lat + minLegNM / 60,
+                        lon: result[0].lon
+                    });
+                }
+            }
+        }
+
+        return result;
+    }
+
     function simplifyProjectedRoute() {
         if ((!ArtState.rawProjectedPoints || ArtState.rawProjectedPoints.length === 0) &&
             (!ArtState.projectedPoints || ArtState.projectedPoints.length === 0)) {
@@ -1685,6 +1784,12 @@
                 }
                 points = bestPoints;
             }
+        }
+
+        // Enforce Minimum Leg Length based on Autopilot Turn Radius
+        if (ArtState.enforceMinTurnRadiusLegs) {
+            const minLegNM = ArtState.autopilotTurnRadiusNM || 1.0;
+            points = enforceMinLegLength(points, minLegNM);
         }
 
         ArtState.projectedPoints = points;
@@ -2743,13 +2848,33 @@
             badgeEl.innerText = `${sharpCount} sharp corner${sharpCount === 1 ? '' : 's'}`;
             badgeEl.className = sharpCount > 0 ? 'badge bg-warning text-dark' : 'badge bg-secondary';
         }
+
+        // Measure minimum leg distance across all flight plan waypoints
+        let minLegNM = Infinity;
+        let shortLegCount = 0;
+        for (let i = 1; i < ArtState.waypoints.length; i++) {
+            const p1 = ArtState.waypoints[i - 1];
+            const p2 = ArtState.waypoints[i];
+            const d = calculateDistanceNM(p1.lat, p1.lon, p2.lat, p2.lon);
+            if (d < minLegNM) minLegNM = d;
+            if (d < turnRadius - 0.02) shortLegCount++;
+        }
+
         if (summaryEl) {
+            let legNote = '';
+            if (ArtState.enforceMinTurnRadiusLegs) {
+                const legValStr = minLegNM === Infinity ? turnRadius.toFixed(1) : minLegNM.toFixed(1);
+                legNote = `<div class="mt-1 small text-success"><i class="bi bi-shield-check me-1"></i>Min leg length enforced: <strong>${legValStr} NM</strong> &ge; Turn Radius (${turnRadius.toFixed(1)} NM). Autopilot corner-cutting enabled.</div>`;
+            } else if (shortLegCount > 0) {
+                legNote = `<div class="mt-1 small text-warning"><i class="bi bi-exclamation-triangle-fill me-1"></i><strong>${shortLegCount} leg${shortLegCount === 1 ? '' : 's'}</strong> shorter than turn radius (${turnRadius.toFixed(1)} NM, min: ${minLegNM.toFixed(2)} NM). Suitable for hand flying; enable Enforce Min Leg for autopilot.</div>`;
+            }
+
             if (ArtState.enableCornerLoopBacks && sharpCount > 0) {
-                summaryEl.innerHTML = `<span class="text-success fw-bold"><i class="bi bi-check-circle me-1"></i>${sharpCount} loop-back${sharpCount === 1 ? '' : 's'} active</span> (R = ${turnRadius.toFixed(1)} NM). Preserves sharp corners on flight tracks.`;
+                summaryEl.innerHTML = `<span class="text-success fw-bold"><i class="bi bi-check-circle me-1"></i>${sharpCount} loop-back${sharpCount === 1 ? '' : 's'} active</span> (R = ${turnRadius.toFixed(1)} NM). Preserves sharp corners on flight tracks.${legNote}`;
             } else if (sharpCount > 0) {
-                summaryEl.innerHTML = `${sharpCount} sharp turn${sharpCount === 1 ? '' : 's'} (> ${minAngle}°). Autopilot cuts inside up to <strong>${maxCutNM.toFixed(2)} NM</strong>. Turn on Loop-Backs to overfly corners cleanly.`;
+                summaryEl.innerHTML = `${sharpCount} sharp turn${sharpCount === 1 ? '' : 's'} (> ${minAngle}°). Autopilot cuts inside up to <strong>${maxCutNM.toFixed(2)} NM</strong>. Turn on Loop-Backs to overfly corners cleanly.${legNote}`;
             } else {
-                summaryEl.innerText = `No corners sharper than ${minAngle}°. Turn radius R = ${turnRadius.toFixed(1)} NM easily handled by autopilot.`;
+                summaryEl.innerHTML = `No corners sharper than ${minAngle}°. Turn radius R = ${turnRadius.toFixed(1)} NM easily handled by autopilot.${legNote}`;
             }
         }
     }
@@ -2788,11 +2913,14 @@
                 badgeStyle = 'style="background-color: #6f42c1;"';
             }
 
+            const isSubRadius = (!ArtState.enforceMinTurnRadiusLegs && i > 0 && legDist < (ArtState.autopilotTurnRadiusNM || 1.0) - 0.02);
+            const legDistStr = i === 0 ? '--' : (legDist.toFixed(1) + ' NM' + (isSubRadius ? ' <span class="badge bg-warning text-dark py-0 px-1" style="font-size:0.62rem;" title="Leg shorter than turn radius (' + (ArtState.autopilotTurnRadiusNM || 1.0).toFixed(1) + ' NM). Autopilot may not cut corner."><i class="bi bi-exclamation-triangle-fill"></i> &lt; R</span>' : ''));
+
             html += `<tr>
                 <td><span class="badge ${badgeClass}" ${badgeStyle}>${wp.id}</span></td>
                 <td class="small">${wp.name}</td>
                 <td class="text-nowrap font-monospace small">${wp.lat.toFixed(4)}°, ${wp.lon.toFixed(4)}°</td>
-                <td>${i === 0 ? '--' : legDist.toFixed(1) + ' NM'}</td>
+                <td>${legDistStr}</td>
                 <td>${i === 0 ? '--' : Math.round(legBearing) + '°'}</td>
                 <td class="fw-bold">${cumDist.toFixed(1)} NM</td>
                 <td class="text-center text-nowrap">
@@ -5881,6 +6009,13 @@
             handleToggleLoopBacks(!ArtState.enableCornerLoopBacks);
         });
 
+        // Enforce Minimum Leg Length Toggle Switch
+        document.getElementById('enforceMinTurnRadiusLegsCheck')?.addEventListener('change', (e) => {
+            HistoryManager.pushState();
+            ArtState.enforceMinTurnRadiusLegs = !!e.target.checked;
+            simplifyProjectedRoute();
+        });
+
         // Toggle Waypoint Indicators Button (Show/Hide numbered circles & loop markers to view art cleanly)
         document.getElementById('mapToggleWaypointsBtn')?.addEventListener('click', () => {
             ArtState.showWaypointIndicators = !ArtState.showWaypointIndicators;
@@ -5899,10 +6034,16 @@
                 const val = parseFloat(apRadiusSlider.value) || 1.0;
                 ArtState.autopilotTurnRadiusNM = Math.max(0.3, Math.min(3.0, Math.round(val * 10) / 10));
                 apRadiusInput.value = ArtState.autopilotTurnRadiusNM.toFixed(1);
-                buildFullFlightPlan();
-                renderRouteOnMap();
-                updateStatsHUD();
-                renderWaypointTable();
+                const minLegLabel = document.getElementById('minLegRadiusLabel');
+                if (minLegLabel) minLegLabel.innerText = `${ArtState.autopilotTurnRadiusNM.toFixed(1)} NM`;
+                if (ArtState.enforceMinTurnRadiusLegs) {
+                    simplifyProjectedRoute();
+                } else {
+                    buildFullFlightPlan();
+                    renderRouteOnMap();
+                    updateStatsHUD();
+                    renderWaypointTable();
+                }
             });
 
             apRadiusInput.addEventListener('change', () => {
@@ -5910,10 +6051,16 @@
                 ArtState.autopilotTurnRadiusNM = Math.max(0.3, Math.min(3.0, Math.round(val * 10) / 10));
                 apRadiusSlider.value = ArtState.autopilotTurnRadiusNM;
                 apRadiusInput.value = ArtState.autopilotTurnRadiusNM.toFixed(1);
-                buildFullFlightPlan();
-                renderRouteOnMap();
-                updateStatsHUD();
-                renderWaypointTable();
+                const minLegLabel = document.getElementById('minLegRadiusLabel');
+                if (minLegLabel) minLegLabel.innerText = `${ArtState.autopilotTurnRadiusNM.toFixed(1)} NM`;
+                if (ArtState.enforceMinTurnRadiusLegs) {
+                    simplifyProjectedRoute();
+                } else {
+                    buildFullFlightPlan();
+                    renderRouteOnMap();
+                    updateStatsHUD();
+                    renderWaypointTable();
+                }
             });
         }
 
@@ -6635,6 +6782,7 @@
     window.unprojectPoint = unprojectPoint;
     window.generateTextArt = generateTextArt;
     window.TEXT_FONTS = TEXT_FONTS;
+    window.enforceMinLegLength = enforceMinLegLength;
 
 })();
 
