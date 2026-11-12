@@ -411,6 +411,13 @@ assert.strictEqual(ArtState.sourceType, 'text', "ArtState.sourceType must be 'te
 assert(ArtState.basePoints && ArtState.basePoints.length >= 4, "Stick font must generate valid base points for 'FLY'");
 assert(ArtState.projectedPoints && ArtState.projectedPoints.length >= 4, "Projected points must be updated for 'FLY'");
 
+// Test aviation script single-stroke generation
+getOrCreateElement('textFontSelect').value = 'script';
+mockWindow.generateTextArt('SkyArt');
+assert.strictEqual(ArtState.sourceType, 'text', "ArtState.sourceType must be 'text'");
+assert(ArtState.basePoints && ArtState.basePoints.length >= 10, "Script font must generate valid base points for 'SkyArt'");
+assert(ArtState.projectedPoints && ArtState.projectedPoints.length >= 10, "Projected points must be updated for 'SkyArt'");
+
 console.log("✅ Test 10 Passed: Text-to-Sky Art multi-font registry configured with Bebas Neue (Aviation Block) default and smooth cursive options.");
 
 // --- Test 11: Autopilot Turn Radius Minimum Leg Length Enforcement & Toggle ---

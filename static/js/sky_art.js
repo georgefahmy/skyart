@@ -1772,8 +1772,12 @@
             }
 
             if (countFullPlanWaypoints(points) > maxWp) {
+                const isText = ArtState.sourceType === 'text';
                 let lowTol = baseToleranceNM;
-                let highTol = Math.max(0.35, (ArtState.sizeNM || 12) * 0.12);
+                // For text, cap highTol so letter shapes and loops are not obliterated
+                let highTol = isText
+                    ? Math.max(0.04, Math.min(0.18, (ArtState.sizeNM || 12) * 0.015))
+                    : Math.max(0.35, (ArtState.sizeNM || 12) * 0.12);
                 let bestPoints = points;
 
                 for (let iter = 0; iter < 12; iter++) {
@@ -3480,77 +3484,213 @@
         }
     }
 
-    // --- Single-Stroke Stick Font Definitions (for clean, low-waypoint text flight paths) ---
-    const STICK_FONT = {
-        'A': [[0, 1], [0.5, 0], [1, 1], [0.75, 0.6], [0.25, 0.6]],
-        'B': [[0, 1], [0, 0], [0.7, 0], [0.9, 0.25], [0.7, 0.5], [0, 0.5], [0.8, 0.5], [1.0, 0.75], [0.8, 1], [0, 1]],
-        'C': [[1, 0.2], [0.7, 0], [0.3, 0], [0, 0.3], [0, 0.7], [0.3, 1], [0.7, 1], [1, 0.8]],
-        'D': [[0, 1], [0, 0], [0.6, 0], [1, 0.35], [1, 0.65], [0.6, 1], [0, 1]],
-        'E': [[1, 0], [0, 0], [0, 0.5], [0.7, 0.5], [0, 0.5], [0, 1], [1, 1]],
-        'F': [[0, 1], [0, 0], [1, 0], [0, 0], [0, 0.5], [0.7, 0.5]],
-        'G': [[1, 0.2], [0.7, 0], [0.3, 0], [0, 0.3], [0, 0.7], [0.3, 1], [0.7, 1], [1, 0.8], [1, 0.5], [0.6, 0.5]],
-        'H': [[0, 0], [0, 1], [0, 0.5], [1, 0.5], [1, 0], [1, 1]],
-        'I': [[0.2, 0], [0.8, 0], [0.5, 0], [0.5, 1], [0.2, 1], [0.8, 1]],
-        'J': [[0.8, 0], [0.8, 0.8], [0.6, 1], [0.2, 1], [0, 0.7]],
-        'K': [[0, 0], [0, 1], [0, 0.5], [1, 0], [0, 0.5], [1, 1]],
-        'L': [[0, 0], [0, 1], [1, 1]],
-        'M': [[0, 1], [0, 0], [0.5, 0.6], [1, 0], [1, 1]],
-        'N': [[0, 1], [0, 0], [1, 1], [1, 0]],
-        'O': [[0.5, 0], [0.85, 0.15], [1, 0.5], [0.85, 0.85], [0.5, 1], [0.15, 0.85], [0, 0.5], [0.15, 0.15], [0.5, 0]],
-        'P': [[0, 1], [0, 0], [0.8, 0], [1, 0.25], [0.8, 0.5], [0, 0.5]],
-        'Q': [[0.5, 0], [0.85, 0.15], [1, 0.5], [0.85, 0.85], [0.5, 1], [0.15, 0.85], [0, 0.5], [0.15, 0.15], [0.5, 0], [0.7, 0.7], [1, 1]],
-        'R': [[0, 1], [0, 0], [0.8, 0], [1, 0.25], [0.8, 0.5], [0, 0.5], [1, 1]],
-        'S': [[1, 0.2], [0.8, 0], [0.2, 0], [0, 0.25], [0.3, 0.5], [0.7, 0.5], [1, 0.75], [0.8, 1], [0.2, 1], [0, 0.8]],
-        'T': [[0, 0], [1, 0], [0.5, 0], [0.5, 1]],
-        'U': [[0, 0], [0, 0.75], [0.25, 1], [0.75, 1], [1, 0.75], [1, 0]],
-        'V': [[0, 0], [0.5, 1], [1, 0]],
-        'W': [[0, 0], [0.25, 1], [0.5, 0.4], [0.75, 1], [1, 0]],
-        'X': [[0, 0], [1, 1], [0.5, 0.5], [0, 1], [1, 0]],
-        'Y': [[0, 0], [0.5, 0.5], [1, 0], [0.5, 0.5], [0.5, 1]],
-        'Z': [[0, 0], [1, 0], [0, 1], [1, 1]],
-        '0': [[0.5, 0], [0.85, 0.15], [1, 0.5], [0.85, 0.85], [0.5, 1], [0.15, 0.85], [0, 0.5], [0.15, 0.15], [0.5, 0]],
-        '1': [[0.2, 0.2], [0.5, 0], [0.5, 1], [0.2, 1], [0.8, 1]],
-        '2': [[0, 0.25], [0.2, 0], [0.8, 0], [1, 0.25], [0, 1], [1, 1]],
-        '3': [[0, 0.2], [0.2, 0], [0.8, 0], [1, 0.25], [0.6, 0.5], [1, 0.75], [0.8, 1], [0.2, 1], [0, 0.8]],
-        '4': [[0.8, 1], [0.8, 0], [0, 0.7], [1, 0.7]],
-        '5': [[1, 0], [0, 0], [0, 0.45], [0.7, 0.45], [1, 0.65], [0.8, 1], [0.2, 1], [0, 0.8]],
-        '6': [[0.8, 0.15], [0.4, 0], [0.1, 0.3], [0, 0.7], [0.3, 1], [0.7, 1], [1, 0.7], [0.7, 0.5], [0, 0.6]],
-        '7': [[0, 0], [1, 0], [0.4, 1]],
-        '8': [[0.5, 0.5], [0.2, 0.3], [0.3, 0], [0.7, 0], [0.8, 0.3], [0.5, 0.5], [0.8, 0.7], [0.7, 1], [0.3, 1], [0.2, 0.7], [0.5, 0.5]],
-        '9': [[1, 0.4], [0.3, 0.5], [0, 0.3], [0.3, 0], [0.7, 0], [1, 0.3], [0.9, 0.7], [0.6, 1], [0.2, 0.85]],
-        '-': [[0.2, 0.5], [0.8, 0.5]],
-        '.': [[0.4, 0.95], [0.6, 0.95], [0.6, 1], [0.4, 1], [0.4, 0.95]],
-        ' ': []
+    // --- High-Fidelity Single-Stroke Vector Fonts (Proportional Aviation Block & Flowing Cursive Script) ---
+    const SINGLE_STROKE_BLOCK = {
+        'A': { w: 0.8, pts: [[0, 1], [0.4, 0], [0.8, 1], [0.6, 0.55], [0.2, 0.55], [0.2, 1], [0.8, 1]] },
+        'B': { w: 0.75, pts: [[0, 1], [0, 0], [0.5, 0], [0.72, 0.25], [0.5, 0.5], [0, 0.5], [0.55, 0.5], [0.75, 0.75], [0.55, 1], [0, 1], [0.75, 1]] },
+        'C': { w: 0.75, pts: [[0.75, 0.2], [0.5, 0], [0.2, 0], [0, 0.25], [0, 0.75], [0.2, 1], [0.5, 1], [0.75, 0.8], [0.5, 1], [0.75, 1]] },
+        'D': { w: 0.75, pts: [[0, 1], [0, 0], [0.45, 0], [0.75, 0.3], [0.75, 0.7], [0.45, 1], [0, 1], [0.75, 1]] },
+        'E': { w: 0.65, pts: [[0.65, 0], [0, 0], [0, 0.5], [0.45, 0.5], [0, 0.5], [0, 1], [0.65, 1]] },
+        'F': { w: 0.65, pts: [[0.65, 0], [0, 0], [0, 0.5], [0.45, 0.5], [0, 0.5], [0, 1], [0.65, 1]] },
+        'G': { w: 0.75, pts: [[0.75, 0.2], [0.5, 0], [0.2, 0], [0, 0.25], [0, 0.75], [0.2, 1], [0.55, 1], [0.75, 0.8], [0.75, 0.55], [0.45, 0.55], [0.75, 0.55], [0.75, 1]] },
+        'H': { w: 0.75, pts: [[0, 1], [0, 0], [0, 0.5], [0.75, 0.5], [0.75, 0], [0.75, 1]] },
+        'I': { w: 0.3, pts: [[0, 0], [0.3, 0], [0.15, 0], [0.15, 1], [0, 1], [0.3, 1]] },
+        'J': { w: 0.6, pts: [[0.1, 0], [0.6, 0], [0.45, 0], [0.45, 0.8], [0.3, 1], [0.1, 1], [0, 0.8], [0.1, 1], [0.6, 1]] },
+        'K': { w: 0.75, pts: [[0, 1], [0, 0], [0, 0.5], [0.7, 0], [0, 0.5], [0.75, 1]] },
+        'L': { w: 0.65, pts: [[0, 0], [0, 1], [0.65, 1]] },
+        'M': { w: 0.9, pts: [[0, 1], [0, 0], [0.45, 0.6], [0.9, 0], [0.9, 1]] },
+        'N': { w: 0.75, pts: [[0, 1], [0, 0], [0.75, 1], [0.75, 0], [0.75, 1]] },
+        'O': { w: 0.8, pts: [[0.4, 0], [0.15, 0.15], [0, 0.5], [0.15, 0.85], [0.4, 1], [0.65, 0.85], [0.8, 0.5], [0.65, 0.15], [0.4, 0], [0.65, 0.15], [0.8, 0.5], [0.65, 0.85], [0.8, 1]] },
+        'P': { w: 0.75, pts: [[0, 1], [0, 0], [0.5, 0], [0.75, 0.25], [0.5, 0.5], [0, 0.5], [0, 1], [0.75, 1]] },
+        'Q': { w: 0.85, pts: [[0.4, 0], [0.15, 0.15], [0, 0.5], [0.15, 0.85], [0.4, 1], [0.65, 0.85], [0.8, 0.5], [0.65, 0.15], [0.4, 0], [0.55, 0.7], [0.85, 1]] },
+        'R': { w: 0.75, pts: [[0, 1], [0, 0], [0.5, 0], [0.75, 0.25], [0.5, 0.5], [0, 0.5], [0.75, 1]] },
+        'S': { w: 0.75, pts: [[0.75, 0.15], [0.5, 0], [0.2, 0], [0, 0.25], [0.2, 0.5], [0.55, 0.5], [0.75, 0.75], [0.55, 1], [0.2, 1], [0, 0.85], [0.2, 1], [0.75, 1]] },
+        'T': { w: 0.75, pts: [[0, 0], [0.75, 0], [0.375, 0], [0.375, 1], [0.75, 1]] },
+        'U': { w: 0.75, pts: [[0, 0], [0, 0.75], [0.2, 1], [0.55, 1], [0.75, 0.75], [0.75, 0], [0.75, 1]] },
+        'V': { w: 0.75, pts: [[0, 0], [0.375, 1], [0.75, 0], [0.75, 1]] },
+        'W': { w: 1.0, pts: [[0, 0], [0.25, 1], [0.5, 0.35], [0.75, 1], [1.0, 0], [1.0, 1]] },
+        'X': { w: 0.75, pts: [[0, 0], [0.75, 1], [0.375, 0.5], [0, 1], [0.375, 0.5], [0.75, 0], [0.75, 1]] },
+        'Y': { w: 0.75, pts: [[0, 0], [0.375, 0.5], [0.75, 0], [0.375, 0.5], [0.375, 1], [0.75, 1]] },
+        'Z': { w: 0.75, pts: [[0, 0], [0.75, 0], [0, 1], [0.75, 1]] },
+        'a': { w: 0.65, pts: [[0.65, 0.6], [0.4, 0.35], [0.15, 0.35], [0, 0.65], [0.15, 1], [0.5, 1], [0.65, 0.8], [0.65, 0.35], [0.65, 1]] },
+        'b': { w: 0.65, pts: [[0, 0], [0, 1], [0.15, 1], [0.5, 1], [0.65, 0.75], [0.65, 0.6], [0.5, 0.35], [0.15, 0.35], [0, 0.5], [0, 1], [0.65, 1]] },
+        'c': { w: 0.55, pts: [[0.55, 0.5], [0.4, 0.35], [0.15, 0.35], [0, 0.65], [0.15, 1], [0.55, 1]] },
+        'd': { w: 0.65, pts: [[0.65, 0], [0.65, 1], [0.5, 1], [0.15, 1], [0, 0.65], [0.15, 0.35], [0.5, 0.35], [0.65, 0.5], [0.65, 1]] },
+        'e': { w: 0.6, pts: [[0, 0.65], [0.6, 0.65], [0.5, 0.35], [0.2, 0.35], [0, 0.6], [0.15, 1], [0.6, 1]] },
+        'f': { w: 0.45, pts: [[0.45, 0.1], [0.3, 0], [0.15, 0], [0.15, 1], [0.15, 0.5], [0, 0.5], [0.4, 0.5], [0.15, 0.5], [0.15, 1], [0.45, 1]] },
+        'g': { w: 0.65, pts: [[0.65, 0.6], [0.4, 0.35], [0.15, 0.35], [0, 0.65], [0.15, 1], [0.5, 1], [0.65, 0.8], [0.65, 0.35], [0.65, 1.2], [0.4, 1.3], [0.15, 1.25], [0, 1.1], [0.65, 1]] },
+        'h': { w: 0.65, pts: [[0, 0], [0, 1], [0, 0.55], [0.2, 0.35], [0.5, 0.35], [0.65, 0.55], [0.65, 1]] },
+        'i': { w: 0.25, pts: [[0.125, 0.35], [0.125, 1], [0.25, 1]] },
+        'j': { w: 0.35, pts: [[0.2, 0.35], [0.2, 1.2], [0.1, 1.3], [0, 1.2], [0.2, 1], [0.35, 1]] },
+        'k': { w: 0.6, pts: [[0, 0], [0, 1], [0, 0.65], [0.5, 0.35], [0, 0.65], [0.6, 1]] },
+        'l': { w: 0.25, pts: [[0.125, 0], [0.125, 1], [0.25, 1]] },
+        'm': { w: 0.9, pts: [[0, 0.35], [0, 1], [0, 0.5], [0.15, 0.35], [0.35, 0.35], [0.45, 0.5], [0.45, 1], [0.45, 0.5], [0.6, 0.35], [0.8, 0.35], [0.9, 0.5], [0.9, 1]] },
+        'n': { w: 0.65, pts: [[0, 0.35], [0, 1], [0, 0.5], [0.2, 0.35], [0.5, 0.35], [0.65, 0.55], [0.65, 1]] },
+        'o': { w: 0.6, pts: [[0.3, 0.35], [0.1, 0.45], [0, 0.65], [0.1, 0.9], [0.3, 1], [0.5, 0.9], [0.6, 0.65], [0.5, 0.45], [0.3, 0.35], [0.6, 1]] },
+        'p': { w: 0.65, pts: [[0, 0.35], [0, 1.3], [0, 0.55], [0.2, 0.35], [0.5, 0.35], [0.65, 0.6], [0.5, 0.85], [0.2, 0.85], [0, 0.7], [0, 1], [0.65, 1]] },
+        'q': { w: 0.65, pts: [[0.65, 1.3], [0.65, 0.35], [0.5, 0.35], [0.15, 0.35], [0, 0.65], [0.15, 1], [0.5, 1], [0.65, 0.8], [0.65, 1]] },
+        'r': { w: 0.45, pts: [[0, 0.35], [0, 1], [0, 0.5], [0.15, 0.35], [0.45, 0.35], [0.45, 1]] },
+        's': { w: 0.55, pts: [[0.55, 0.45], [0.4, 0.35], [0.15, 0.35], [0, 0.5], [0.4, 0.65], [0.55, 0.8], [0.4, 1], [0.15, 1], [0, 0.9], [0.15, 1], [0.55, 1]] },
+        't': { w: 0.4, pts: [[0.15, 0.1], [0.15, 0.9], [0.25, 1], [0.4, 1], [0.15, 1], [0.15, 0.35], [0, 0.35], [0.35, 0.35], [0.15, 0.35], [0.15, 1], [0.4, 1]] },
+        'u': { w: 0.65, pts: [[0, 0.35], [0, 0.85], [0.2, 1], [0.5, 1], [0.65, 0.85], [0.65, 0.35], [0.65, 1]] },
+        'v': { w: 0.6, pts: [[0, 0.35], [0.3, 1], [0.6, 0.35], [0.6, 1]] },
+        'w': { w: 0.85, pts: [[0, 0.35], [0.2, 1], [0.425, 0.55], [0.65, 1], [0.85, 0.35], [0.85, 1]] },
+        'x': { w: 0.6, pts: [[0, 0.35], [0.6, 1], [0.3, 0.675], [0, 1], [0.3, 0.675], [0.6, 0.35], [0.6, 1]] },
+        'y': { w: 0.65, pts: [[0, 0.35], [0, 0.8], [0.2, 1], [0.5, 1], [0.65, 0.8], [0.65, 0.35], [0.65, 1.25], [0.4, 1.3], [0.15, 1.2], [0.65, 1]] },
+        'z': { w: 0.55, pts: [[0, 0.35], [0.55, 0.35], [0, 1], [0.55, 1]] },
+        '0': { w: 0.75, pts: [[0.375, 0], [0.15, 0.15], [0, 0.5], [0.15, 0.85], [0.375, 1], [0.6, 0.85], [0.75, 0.5], [0.6, 0.15], [0.375, 0], [0.75, 1]] },
+        '1': { w: 0.5, pts: [[0.1, 0.25], [0.3, 0], [0.3, 1], [0.1, 1], [0.5, 1]] },
+        '2': { w: 0.7, pts: [[0, 0.25], [0.2, 0], [0.5, 0], [0.7, 0.25], [0, 1], [0.7, 1]] },
+        '3': { w: 0.7, pts: [[0, 0.2], [0.2, 0], [0.5, 0], [0.7, 0.25], [0.4, 0.5], [0.7, 0.75], [0.5, 1], [0.15, 1], [0, 0.8], [0.15, 1], [0.7, 1]] },
+        '4': { w: 0.7, pts: [[0.5, 1], [0.5, 0], [0, 0.65], [0.7, 0.65], [0.5, 0.65], [0.5, 1], [0.7, 1]] },
+        '5': { w: 0.7, pts: [[0.7, 0], [0, 0], [0, 0.45], [0.45, 0.45], [0.7, 0.65], [0.55, 1], [0.15, 1], [0, 0.8], [0.15, 1], [0.7, 1]] },
+        '6': { w: 0.7, pts: [[0.55, 0.15], [0.3, 0], [0.1, 0.3], [0, 0.7], [0.25, 1], [0.5, 1], [0.7, 0.75], [0.5, 0.5], [0, 0.6], [0, 1], [0.7, 1]] },
+        '7': { w: 0.7, pts: [[0, 0], [0.7, 0], [0.25, 1], [0.7, 1]] },
+        '8': { w: 0.7, pts: [[0.35, 0.5], [0.15, 0.3], [0.25, 0], [0.45, 0], [0.55, 0.3], [0.35, 0.5], [0.55, 0.7], [0.45, 1], [0.25, 1], [0.15, 0.7], [0.35, 0.5], [0.7, 1]] },
+        '9': { w: 0.7, pts: [[0.7, 0.6], [0.45, 0.45], [0.2, 0.45], [0, 0.25], [0.2, 0], [0.45, 0], [0.7, 0.25], [0.7, 0.8], [0.45, 1], [0.2, 0.85], [0.45, 1], [0.7, 1]] },
+        '-': { w: 0.5, pts: [[0.1, 0.5], [0.4, 0.5], [0.4, 1], [0.5, 1]] },
+        '.': { w: 0.3, pts: [[0.1, 0.9], [0.2, 0.9], [0.2, 1], [0.1, 1], [0.3, 1]] },
+        ',': { w: 0.3, pts: [[0.15, 0.85], [0.2, 0.95], [0.1, 1.15], [0.2, 1], [0.3, 1]] },
+        '!': { w: 0.3, pts: [[0.15, 0], [0.15, 0.65], [0.15, 0.88], [0.15, 1], [0.3, 1]] },
+        '?': { w: 0.6, pts: [[0, 0.25], [0.15, 0], [0.45, 0], [0.6, 0.2], [0.35, 0.45], [0.35, 0.65], [0.35, 0.88], [0.35, 1], [0.6, 1]] },
+        '/': { w: 0.5, pts: [[0, 1], [0.5, 0], [0.5, 1]] },
+        ':': { w: 0.3, pts: [[0.15, 0.4], [0.15, 0.5], [0.15, 0.88], [0.15, 1], [0.3, 1]] },
+        '\'': { w: 0.25, pts: [[0.1, 0], [0.15, 0.25], [0.15, 1], [0.25, 1]] },
+        '&': { w: 0.75, pts: [[0.75, 0.85], [0.6, 1], [0.35, 1], [0.15, 0.8], [0.2, 0.55], [0.45, 0.3], [0.45, 0.15], [0.3, 0], [0.2, 0.15], [0.2, 0.3], [0.6, 0.75], [0.75, 1]] },
+        '+': { w: 0.6, pts: [[0, 0.5], [0.6, 0.5], [0.3, 0.5], [0.3, 0.2], [0.3, 0.8], [0.3, 1], [0.6, 1]] },
+        '_': { w: 0.6, pts: [[0, 1], [0.6, 1]] },
+        ' ': { w: 0.4, pts: [[0, 1], [0.4, 1]] }
     };
 
-    function generateStickTextArt(text) {
-        const chars = text.toUpperCase().split('');
-        const pts = [];
+    const SINGLE_STROKE_SCRIPT = {
+        // Distinctive Cursive Capital Letters (A-Z)
+        'A': { w: 0.85, pts: [[0.1, 0.85], [0.4, 0.05], [0.55, 0.1], [0.75, 0.85], [0.6, 0.5], [0.25, 0.5], [0.45, 0.85], [0.85, 0.85]] },
+        'B': { w: 0.8, pts: [[0.1, 0.1], [0.1, 0.85], [0.1, 0.15], [0.5, 0.05], [0.7, 0.25], [0.4, 0.45], [0.75, 0.65], [0.5, 0.85], [0.1, 0.85], [0.8, 0.85]] },
+        'C': { w: 0.75, pts: [[0.7, 0.15], [0.5, 0.05], [0.25, 0.05], [0.1, 0.3], [0.1, 0.65], [0.3, 0.85], [0.75, 0.85]] },
+        'D': { w: 0.8, pts: [[0.2, 0.1], [0.15, 0.85], [0.05, 0.8], [0.15, 0.85], [0.6, 0.85], [0.8, 0.5], [0.6, 0.05], [0.2, 0.1], [0.8, 0.85]] },
+        'E': { w: 0.7, pts: [[0.6, 0.1], [0.35, 0.05], [0.15, 0.2], [0.4, 0.42], [0.2, 0.42], [0.1, 0.65], [0.35, 0.85], [0.7, 0.85]] },
+        'F': { w: 0.75, pts: [[0.1, 0.12], [0.4, 0.05], [0.7, 0.08], [0.4, 0.08], [0.35, 0.8], [0.2, 0.85], [0.35, 0.85], [0.2, 0.45], [0.55, 0.45], [0.35, 0.85], [0.75, 0.85]] },
+        'G': { w: 0.8, pts: [[0.1, 0.75], [0.45, 0.05], [0.2, 0.1], [0.2, 0.5], [0.6, 0.45], [0.6, 1.25], [0.35, 1.3], [0.2, 1.15], [0.6, 0.85], [0.8, 0.85]] },
+        'H': { w: 0.8, pts: [[0.15, 0.1], [0.15, 0.85], [0.15, 0.45], [0.6, 0.45], [0.6, 0.05], [0.6, 0.85], [0.8, 0.85]] },
+        'I': { w: 0.55, pts: [[0.1, 0.7], [0.3, 0.85], [0.45, 0.7], [0.3, 0.1], [0.15, 0.05], [0.45, 0.05], [0.3, 0.85], [0.55, 0.85]] },
+        'J': { w: 0.6, pts: [[0.15, 0.2], [0.45, 0.05], [0.35, 0.05], [0.35, 1.25], [0.15, 1.3], [0.05, 1.15], [0.35, 0.85], [0.6, 0.85]] },
+        'K': { w: 0.75, pts: [[0.15, 0.05], [0.15, 0.85], [0.15, 0.45], [0.65, 0.05], [0.25, 0.45], [0.7, 0.85], [0.75, 0.85]] },
+        'L': { w: 0.7, pts: [[0.2, 0.2], [0.35, 0.05], [0.15, 0.2], [0.15, 0.8], [0.05, 0.85], [0.25, 0.85], [0.7, 0.85]] },
+        'M': { w: 0.95, pts: [[0, 0.7], [0.15, 0.05], [0.35, 0.8], [0.55, 0.05], [0.75, 0.8], [0.95, 0.85]] },
+        'N': { w: 0.8, pts: [[0, 0.7], [0.15, 0.05], [0.55, 0.8], [0.7, 0.15], [0.7, 0.85], [0.8, 0.85]] },
+        'O': { w: 0.8, pts: [[0.45, 0.05], [0.15, 0.3], [0.15, 0.65], [0.45, 0.85], [0.75, 0.65], [0.75, 0.3], [0.45, 0.05], [0.35, 0.15], [0.6, 0.15], [0.8, 0.85]] },
+        'P': { w: 0.75, pts: [[0.15, 0.85], [0.15, 0.05], [0.55, 0.05], [0.75, 0.25], [0.55, 0.5], [0.15, 0.5], [0.15, 0.85], [0.75, 0.85]] },
+        'Q': { w: 0.85, pts: [[0.45, 0.05], [0.15, 0.35], [0.2, 0.8], [0.45, 0.85], [0.75, 0.65], [0.75, 0.3], [0.45, 0.05], [0.35, 0.65], [0.55, 0.85], [0.85, 0.85]] },
+        'R': { w: 0.8, pts: [[0.15, 0.85], [0.15, 0.05], [0.55, 0.05], [0.75, 0.25], [0.55, 0.5], [0.15, 0.5], [0.45, 0.5], [0.75, 0.85], [0.8, 0.85]] },
+        'S': { w: 0.75, pts: [[0.1, 0.85], [0.4, 0.05], [0.65, 0.15], [0.45, 0.45], [0.65, 0.65], [0.45, 0.85], [0.2, 0.85], [0.75, 0.85]] },
+        'T': { w: 0.75, pts: [[0.1, 0.12], [0.35, 0.05], [0.65, 0.08], [0.38, 0.08], [0.35, 0.75], [0.25, 0.85], [0.75, 0.85]] },
+        'U': { w: 0.8, pts: [[0.1, 0.2], [0.2, 0.08], [0.2, 0.7], [0.4, 0.85], [0.6, 0.7], [0.6, 0.08], [0.6, 0.85], [0.8, 0.85]] },
+        'V': { w: 0.75, pts: [[0.1, 0.2], [0.2, 0.08], [0.4, 0.85], [0.65, 0.1], [0.55, 0.18], [0.75, 0.85]] },
+        'W': { w: 0.95, pts: [[0.05, 0.2], [0.15, 0.08], [0.25, 0.85], [0.45, 0.25], [0.65, 0.85], [0.85, 0.1], [0.95, 0.85]] },
+        'X': { w: 0.75, pts: [[0.1, 0.2], [0.65, 0.85], [0.38, 0.52], [0.1, 0.85], [0.65, 0.1], [0.65, 0.85], [0.75, 0.85]] },
+        'Y': { w: 0.8, pts: [[0.1, 0.2], [0.2, 0.08], [0.3, 0.65], [0.5, 0.65], [0.55, 0.1], [0.55, 1.25], [0.35, 1.3], [0.2, 1.15], [0.55, 0.85], [0.8, 0.85]] },
+        'Z': { w: 0.7, pts: [[0.15, 0.15], [0.55, 0.08], [0.25, 0.45], [0.55, 0.55], [0.4, 0.85], [0.4, 1.25], [0.2, 1.3], [0.1, 1.15], [0.4, 0.85], [0.7, 0.85]] },
+        // Dedicated Flowing Cursive Lowercase (a-z)
+        'a': { w: 0.6, pts: [[0, 0.85], [0.2, 0.85], [0.45, 0.45], [0.25, 0.45], [0.1, 0.65], [0.25, 0.85], [0.45, 0.85], [0.45, 0.5], [0.45, 0.85], [0.6, 0.85]] },
+        'b': { w: 0.55, pts: [[0, 0.85], [0.2, 0.05], [0.1, 0.2], [0.1, 0.85], [0.35, 0.85], [0.45, 0.65], [0.3, 0.55], [0.45, 0.55], [0.55, 0.85]] },
+        'c': { w: 0.5, pts: [[0, 0.85], [0.15, 0.85], [0.4, 0.5], [0.25, 0.45], [0.1, 0.65], [0.25, 0.85], [0.5, 0.85]] },
+        'd': { w: 0.6, pts: [[0, 0.85], [0.2, 0.85], [0.4, 0.5], [0.25, 0.45], [0.1, 0.65], [0.25, 0.85], [0.4, 0.85], [0.4, 0.05], [0.4, 0.85], [0.6, 0.85]] },
+        'e': { w: 0.5, pts: [[0, 0.85], [0.35, 0.65], [0.45, 0.5], [0.25, 0.45], [0.1, 0.65], [0.25, 0.85], [0.5, 0.85]] },
+        'f': { w: 0.45, pts: [[0, 0.85], [0.25, 0.05], [0.15, 0.2], [0.15, 1.25], [0.3, 1.2], [0.15, 0.7], [0.35, 0.7], [0.45, 0.85]] },
+        'g': { w: 0.6, pts: [[0, 0.85], [0.2, 0.85], [0.4, 0.5], [0.25, 0.45], [0.1, 0.65], [0.25, 0.85], [0.4, 0.85], [0.4, 1.25], [0.2, 1.3], [0.1, 1.15], [0.4, 0.85], [0.6, 0.85]] },
+        'h': { w: 0.6, pts: [[0, 0.85], [0.2, 0.05], [0.1, 0.2], [0.1, 0.85], [0.1, 0.6], [0.3, 0.45], [0.45, 0.6], [0.45, 0.85], [0.6, 0.85]] },
+        'i': { w: 0.35, pts: [[0, 0.85], [0.2, 0.48], [0.2, 0.85], [0.35, 0.85]] },
+        'j': { w: 0.4, pts: [[0, 0.85], [0.25, 0.48], [0.25, 1.25], [0.1, 1.3], [0, 1.15], [0.25, 0.85], [0.4, 0.85]] },
+        'k': { w: 0.55, pts: [[0, 0.85], [0.2, 0.05], [0.1, 0.2], [0.1, 0.85], [0.1, 0.6], [0.35, 0.45], [0.2, 0.65], [0.4, 0.85], [0.55, 0.85]] },
+        'l': { w: 0.35, pts: [[0, 0.85], [0.2, 0.05], [0.1, 0.2], [0.15, 0.85], [0.35, 0.85]] },
+        'm': { w: 0.85, pts: [[0, 0.85], [0.1, 0.5], [0.1, 0.85], [0.1, 0.6], [0.3, 0.45], [0.4, 0.6], [0.4, 0.85], [0.4, 0.6], [0.6, 0.45], [0.7, 0.6], [0.7, 0.85], [0.85, 0.85]] },
+        'n': { w: 0.6, pts: [[0, 0.85], [0.1, 0.5], [0.1, 0.85], [0.1, 0.6], [0.35, 0.45], [0.45, 0.6], [0.45, 0.85], [0.6, 0.85]] },
+        'o': { w: 0.55, pts: [[0, 0.85], [0.2, 0.85], [0.4, 0.5], [0.25, 0.45], [0.1, 0.65], [0.25, 0.85], [0.4, 0.85], [0.45, 0.55], [0.55, 0.85]] },
+        'p': { w: 0.55, pts: [[0, 0.85], [0.15, 0.48], [0.15, 1.25], [0.15, 0.65], [0.35, 0.45], [0.45, 0.6], [0.35, 0.75], [0.15, 0.75], [0.35, 0.85], [0.55, 0.85]] },
+        'q': { w: 0.6, pts: [[0, 0.85], [0.2, 0.85], [0.4, 0.5], [0.25, 0.45], [0.1, 0.65], [0.25, 0.85], [0.4, 0.85], [0.4, 1.25], [0.55, 1.1], [0.4, 0.85], [0.6, 0.85]] },
+        'r': { w: 0.45, pts: [[0, 0.85], [0.15, 0.48], [0.3, 0.45], [0.35, 0.55], [0.25, 0.85], [0.45, 0.85]] },
+        's': { w: 0.45, pts: [[0, 0.85], [0.25, 0.45], [0.35, 0.55], [0.1, 0.75], [0.3, 0.85], [0.45, 0.85]] },
+        't': { w: 0.4, pts: [[0, 0.85], [0.2, 0.15], [0.2, 0.85], [0.35, 0.85], [0.2, 0.85], [0.2, 0.4], [0.05, 0.4], [0.32, 0.4], [0.2, 0.4], [0.2, 0.85], [0.4, 0.85]] },
+        'u': { w: 0.55, pts: [[0, 0.85], [0.1, 0.5], [0.1, 0.75], [0.25, 0.85], [0.4, 0.75], [0.4, 0.5], [0.4, 0.85], [0.55, 0.85]] },
+        'v': { w: 0.5, pts: [[0, 0.85], [0.1, 0.5], [0.25, 0.85], [0.4, 0.5], [0.5, 0.85]] },
+        'w': { w: 0.75, pts: [[0, 0.85], [0.1, 0.5], [0.2, 0.85], [0.35, 0.6], [0.5, 0.85], [0.65, 0.5], [0.75, 0.85]] },
+        'x': { w: 0.5, pts: [[0, 0.85], [0.4, 0.5], [0.2, 0.68], [0, 0.5], [0.2, 0.68], [0.4, 0.85], [0.5, 0.85]] },
+        'y': { w: 0.55, pts: [[0, 0.85], [0.1, 0.5], [0.1, 0.75], [0.25, 0.85], [0.4, 0.75], [0.4, 0.5], [0.4, 1.25], [0.2, 1.3], [0.1, 1.15], [0.4, 0.85], [0.55, 0.85]] },
+        'z': { w: 0.5, pts: [[0, 0.85], [0.1, 0.5], [0.35, 0.5], [0.15, 0.85], [0.35, 0.85], [0.2, 1.2], [0.05, 1.15], [0.3, 0.85], [0.5, 0.85]] },
+        // Flowing Cursive Digits
+        '0': { w: 0.7, pts: [[0.35, 0.05], [0.15, 0.3], [0.15, 0.65], [0.35, 0.85], [0.55, 0.65], [0.55, 0.3], [0.35, 0.05], [0.7, 0.85]] },
+        '1': { w: 0.5, pts: [[0.1, 0.25], [0.3, 0.05], [0.3, 0.85], [0.15, 0.85], [0.5, 0.85]] },
+        '2': { w: 0.65, pts: [[0.1, 0.25], [0.3, 0.05], [0.55, 0.15], [0.6, 0.3], [0.1, 0.85], [0.65, 0.85]] },
+        '3': { w: 0.65, pts: [[0.1, 0.2], [0.3, 0.05], [0.55, 0.15], [0.35, 0.45], [0.6, 0.6], [0.45, 0.85], [0.15, 0.85], [0.65, 0.85]] },
+        '4': { w: 0.65, pts: [[0.45, 0.85], [0.45, 0.05], [0.08, 0.6], [0.65, 0.6], [0.45, 0.6], [0.45, 0.85], [0.65, 0.85]] },
+        '5': { w: 0.65, pts: [[0.55, 0.05], [0.15, 0.05], [0.12, 0.4], [0.45, 0.4], [0.6, 0.58], [0.45, 0.85], [0.15, 0.85], [0.65, 0.85]] },
+        '6': { w: 0.65, pts: [[0.5, 0.15], [0.25, 0.05], [0.1, 0.35], [0.1, 0.7], [0.3, 0.85], [0.55, 0.7], [0.5, 0.45], [0.15, 0.5], [0.2, 0.85], [0.65, 0.85]] },
+        '7': { w: 0.65, pts: [[0.08, 0.08], [0.6, 0.05], [0.3, 0.85], [0.65, 0.85]] },
+        '8': { w: 0.65, pts: [[0.35, 0.45], [0.18, 0.25], [0.35, 0.05], [0.52, 0.25], [0.35, 0.45], [0.55, 0.65], [0.35, 0.85], [0.15, 0.65], [0.35, 0.45], [0.65, 0.85]] },
+        '9': { w: 0.65, pts: [[0.55, 0.5], [0.35, 0.4], [0.15, 0.25], [0.35, 0.05], [0.55, 0.2], [0.55, 0.7], [0.35, 0.85], [0.15, 0.85], [0.65, 0.85]] },
+        '-': { w: 0.45, pts: [[0.1, 0.5], [0.35, 0.5], [0.35, 0.85], [0.45, 0.85]] },
+        '.': { w: 0.3, pts: [[0.1, 0.8], [0.2, 0.8], [0.2, 0.85], [0.1, 0.85], [0.3, 0.85]] },
+        ',': { w: 0.3, pts: [[0.15, 0.8], [0.2, 0.85], [0.1, 1.05], [0.2, 0.85], [0.3, 0.85]] },
+        '!': { w: 0.3, pts: [[0.15, 0.05], [0.15, 0.6], [0.15, 0.75], [0.15, 0.85], [0.3, 0.85]] },
+        '?': { w: 0.6, pts: [[0.1, 0.25], [0.2, 0.05], [0.45, 0.05], [0.55, 0.2], [0.35, 0.45], [0.35, 0.6], [0.35, 0.75], [0.35, 0.85], [0.6, 0.85]] },
+        ' ': { w: 0.4, pts: [[0, 0.85], [0.4, 0.85]] }
+    };
+
+    // Backward-compatibility alias
+    const STICK_FONT = SINGLE_STROKE_BLOCK;
+
+    function generateSingleStrokeTextArt(text, fontMode = 'block') {
+        if (!text || text.trim() === '') return [];
+        const isScript = (fontMode === 'script' || fontMode === 'pacifico' || fontMode === 'dancing' || fontMode === 'greatvibes');
+        const font = isScript ? SINGLE_STROKE_SCRIPT : SINGLE_STROKE_BLOCK;
+        const baselineY = isScript ? 0.85 : 1.0;
+        const letterSpacing = isScript ? 0.05 : 0.18;
+
+        const allPoints = [];
         const contours = [];
-        const charWidth = 1.0;
-        const charSpacing = 0.35;
+        let curX = 0;
 
-        chars.forEach((ch, idx) => {
-            const strokeDef = STICK_FONT[ch];
-            if (!strokeDef || strokeDef.length === 0) return;
-            const offsetX = idx * (charWidth + charSpacing);
-            const letterPts = [];
-
-            strokeDef.forEach(p => {
-                const pt = {
-                    x: offsetX + p[0],
-                    y: p[1]
-                };
-                pts.push(pt);
-                letterPts.push(pt);
-            });
-            if (letterPts.length > 0) {
-                contours.push(letterPts);
+        for (let i = 0; i < text.length; i++) {
+            const ch = text[i];
+            let glyph = font[ch];
+            if (!glyph && font[ch.toUpperCase()]) {
+                glyph = font[ch.toUpperCase()];
             }
-        });
+            if (!glyph) {
+                glyph = font[' '];
+            }
 
-        pts.contours = contours;
-        return pts;
+            const charPts = glyph.pts.map(p => ({
+                x: Number((curX + p[0]).toFixed(3)),
+                y: Number(p[1].toFixed(3))
+            }));
+
+            if (allPoints.length > 0) {
+                const prev = allPoints[allPoints.length - 1];
+                const nextStart = charPts[0];
+
+                // If prev was not at baseline, step down cleanly to baseline
+                if (Math.abs(prev.y - baselineY) > 0.05) {
+                    allPoints.push({ x: prev.x, y: baselineY });
+                }
+                // Transition along baseline to next glyph start X if needed
+                if (Math.abs(nextStart.y - baselineY) > 0.05) {
+                    allPoints.push({ x: nextStart.x, y: baselineY });
+                }
+            }
+
+            allPoints.push(...charPts);
+            contours.push(charPts);
+            curX += glyph.w + letterSpacing;
+        }
+
+        allPoints.contours = [allPoints];
+        return allPoints;
+    }
+
+    // Backward-compatibility wrapper
+    function generateStickTextArt(text) {
+        return generateSingleStrokeTextArt(text, 'block');
     }
 
     // Fast separable 1D box blur for Difference-of-Gaussians (DoG) sketch vectorization
@@ -3895,13 +4035,30 @@
                 y: Math.floor(idx / w)
             })));
 
-            // 5. Connect all strokes into ONE continuous single stroke using Nearest-Neighbor TSP with flip
-            // Each stroke is traversed FORWARD ONCE. No backtracking down-and-back along any branch!
-            const unvisited = strokePointArrays.slice(1);
-            const chained = [...strokePointArrays[0]];
+            // 5. Connect all strokes into ONE continuous single stroke using Left-to-Right TSP with smooth routing
+            // Find leftmost stroke to begin navigation naturally from left to right
+            let startIdx = 0;
+            let minStartScore = Infinity;
+            for (let i = 0; i < strokePointArrays.length; i++) {
+                const s = strokePointArrays[i];
+                const minX = Math.min(s[0].x, s[s.length - 1].x);
+                if (minX < minStartScore) {
+                    minStartScore = minX;
+                    startIdx = i;
+                }
+            }
+
+            const unvisited = strokePointArrays.slice();
+            const [firstStroke] = unvisited.splice(startIdx, 1);
+            // Ensure first stroke progresses left-to-right
+            if (firstStroke.length > 1 && firstStroke[0].x > firstStroke[firstStroke.length - 1].x) {
+                firstStroke.reverse();
+            }
+            const chained = [...firstStroke];
 
             while (unvisited.length > 0) {
                 const lastPt = chained[chained.length - 1];
+                let bestScore = Infinity;
                 let bestDist = Infinity;
                 let bestIdx = 0;
                 let bestReverse = false;
@@ -3913,12 +4070,23 @@
                     const dStart = Math.hypot(pStart.x - lastPt.x, pStart.y - lastPt.y);
                     const dEnd = Math.hypot(pEnd.x - lastPt.x, pEnd.y - lastPt.y);
 
-                    if (dStart < bestDist) {
+                    // Add penalty for jumping backward to previously traversed letters
+                    const dxStart = pStart.x - lastPt.x;
+                    const penaltyStart = (dxStart < -30) ? Math.abs(dxStart) * 3 : 0;
+                    const scoreStart = dStart + penaltyStart;
+
+                    const dxEnd = pEnd.x - lastPt.x;
+                    const penaltyEnd = (dxEnd < -30) ? Math.abs(dxEnd) * 3 : 0;
+                    const scoreEnd = dEnd + penaltyEnd;
+
+                    if (scoreStart < bestScore) {
+                        bestScore = scoreStart;
                         bestDist = dStart;
                         bestIdx = i;
                         bestReverse = false;
                     }
-                    if (dEnd < bestDist) {
+                    if (scoreEnd < bestScore) {
+                        bestScore = scoreEnd;
                         bestDist = dEnd;
                         bestIdx = i;
                         bestReverse = true;
@@ -3927,15 +4095,24 @@
 
                 const [nextStroke] = unvisited.splice(bestIdx, 1);
                 if (bestReverse) nextStroke.reverse();
+
+                const nextStart = nextStroke[0];
+                // If there is a jump across letters (disconnected), route along bottom to prevent diagonal cuts
+                if (bestDist > 25 && Math.abs(nextStart.x - lastPt.x) > 15) {
+                    const transitY = Math.max(lastPt.y, nextStart.y) + 4;
+                    chained.push({ x: lastPt.x, y: transitY });
+                    chained.push({ x: nextStart.x, y: transitY });
+                }
+
                 chained.push(...nextStroke);
             }
 
-            // 6. Decimate waypoints: respect Max Waypoints ceiling if enforced
+            // 6. Decimate waypoints: extract clean, well-spaced vector points without distorting letterforms
             let simplified = null;
-            if (ArtState.enforceMaxWaypoints && ArtState.maxWaypoints > 0) {
+            if (ArtState.sourceType === 'import' && ArtState.enforceMaxWaypoints && ArtState.maxWaypoints > 0) {
                 const targetWp = ArtState.maxWaypoints;
                 let lowEps = 0.5;
-                let highEps = 35.0;
+                let highEps = 10.0;
                 simplified = ramerDouglasPeucker(chained, 1.5);
 
                 for (let iter = 0; iter < 16; iter++) {
@@ -3949,7 +4126,7 @@
                     }
                 }
             } else {
-                const eps = Math.max(1.1, Math.min(3.6, 3.6 - ((sliderVal - 1) / 19.0) * 2.4));
+                const eps = Math.max(1.1, Math.min(2.5, 2.5 - ((sliderVal - 1) / 19.0) * 1.4));
                 simplified = ramerDouglasPeucker(chained, eps);
             }
 
@@ -3974,8 +4151,12 @@
                 return;
             }
 
-            // Keep reference to decoded image for real-time slider & max waypoint adjustments
-            ArtState.lastDecodedImage = imgElement;
+            // Keep reference to decoded image for real-time slider & max waypoint adjustments ONLY for image uploads
+            if (ArtState.sourceType === 'import') {
+                ArtState.lastDecodedImage = imgElement;
+            } else {
+                ArtState.lastDecodedImage = null;
+            }
 
             // Set as base points with single open contour
             normalizeAndSetBasePoints(cleanPts, shouldFitBounds, [cleanPts]);
@@ -4769,17 +4950,18 @@
 
     // --- Text Fonts Registry (~10 Distinct Fonts + Built-in Stick) ---
     const TEXT_FONTS = {
-        'pacifico': { name: 'Pacifico', family: "'Pacifico', cursive", cursive: true, weight: '400', loadSpec: '400 100px Pacifico' },
-        'dancing': { name: 'Dancing Script', family: "'Dancing Script', cursive", cursive: true, weight: '700', loadSpec: '700 100px "Dancing Script"' },
-        'greatvibes': { name: 'Great Vibes', family: "'Great Vibes', cursive", cursive: true, weight: '400', loadSpec: '400 100px "Great Vibes"' },
-        'bebas': { name: 'Bebas Neue', family: "'Bebas Neue', sans-serif", cursive: false, weight: '400', loadSpec: '400 100px "Bebas Neue"' },
-        'montserrat': { name: 'Montserrat', family: "'Montserrat', sans-serif", cursive: false, weight: '800', loadSpec: '800 100px Montserrat' },
-        'oswald': { name: 'Oswald', family: "'Oswald', sans-serif", cursive: false, weight: '700', loadSpec: '700 100px Oswald' },
-        'playfair': { name: 'Playfair Display', family: "'Playfair Display', serif", cursive: false, weight: '700', loadSpec: '700 100px "Playfair Display"' },
-        'cinzel': { name: 'Cinzel', family: "'Cinzel', serif", cursive: false, weight: '700', loadSpec: '700 100px Cinzel' },
-        'courier': { name: 'Courier Prime', family: "'Courier Prime', monospace", cursive: false, weight: '700', loadSpec: '700 100px "Courier Prime"' },
+        'pacifico': { name: 'Pacifico', family: 'Pacifico, cursive', cursive: true, weight: '400', loadSpec: '400 100px Pacifico' },
+        'dancing': { name: 'Dancing Script', family: '"Dancing Script", cursive', cursive: true, weight: '700', loadSpec: '700 100px "Dancing Script"' },
+        'greatvibes': { name: 'Great Vibes', family: '"Great Vibes", cursive', cursive: true, weight: '400', loadSpec: '400 100px "Great Vibes"' },
+        'bebas': { name: 'Bebas Neue', family: '"Bebas Neue", sans-serif', cursive: false, weight: '400', loadSpec: '400 100px "Bebas Neue"' },
+        'montserrat': { name: 'Montserrat', family: 'Montserrat, sans-serif', cursive: false, weight: '800', loadSpec: '800 100px Montserrat' },
+        'oswald': { name: 'Oswald', family: 'Oswald, sans-serif', cursive: false, weight: '700', loadSpec: '700 100px Oswald' },
+        'playfair': { name: 'Playfair Display', family: '"Playfair Display", serif', cursive: false, weight: '700', loadSpec: '700 100px "Playfair Display"' },
+        'cinzel': { name: 'Cinzel', family: 'Cinzel, serif', cursive: false, weight: '700', loadSpec: '700 100px Cinzel' },
+        'courier': { name: 'Courier Prime', family: '"Courier Prime", monospace', cursive: false, weight: '700', loadSpec: '700 100px "Courier Prime"' },
         'sans': { name: 'Standard Sans', family: 'sans-serif', cursive: false, weight: 'bold', loadSpec: null },
-        'stick': { name: 'Aviation Stick', family: 'stick', isStickOnly: true }
+        'stick': { name: 'Aviation Stick', family: 'stick', cursive: false, isStickOnly: true },
+        'script': { name: 'Aviation Script', family: 'script', cursive: true, isStickOnly: true }
     };
 
     // --- Text-to-Sky Art Generator ---
@@ -4787,21 +4969,25 @@
         if (!text || text.trim() === '') return;
         text = text.trim();
 
-        ArtState.sourceType = 'text';
-        ArtState.strokeCount = 0;
-        updateStrokeCountBadge();
-
         const fontSelect = document.getElementById('textFontSelect');
         const fontKey = (fontSelect && fontSelect.value) ? fontSelect.value : 'bebas';
         const fontDef = TEXT_FONTS[fontKey] || TEXT_FONTS['bebas'];
 
+        ArtState.sourceType = 'text';
+        ArtState.textString = text;
+        ArtState.textFontKey = fontKey;
+        ArtState.lastDecodedImage = null; // Prevent imported raster re-tracing from clobbering text
+        ArtState.strokeCount = 0;
+        updateStrokeCountBadge();
+
         const isStick = document.getElementById('textStyleStick')?.checked;
 
-        // If 'stick' font option was specifically selected, use the 7-segment stick generator
-        if (fontDef.isStickOnly || fontKey === 'stick') {
-            const stickPts = generateStickTextArt(text);
-            if (stickPts && stickPts.length >= 2) {
-                normalizeAndSetBasePoints(stickPts, true, stickPts.contours);
+        // Dedicated pure vector fonts: Aviation Stick & Aviation Script
+        if (fontDef.isStickOnly || fontKey === 'stick' || fontKey === 'script') {
+            const fontMode = (fontKey === 'script' || fontDef.cursive) ? 'script' : 'block';
+            const singleStrokePts = generateSingleStrokeTextArt(text, fontMode);
+            if (singleStrokePts && singleStrokePts.length >= 2) {
+                normalizeAndSetBasePoints(singleStrokePts, true, [singleStrokePts]);
                 return;
             }
         }
@@ -5895,7 +6081,7 @@
                 enforceCheck.checked = !!ArtState.enforceMaxWaypoints;
             }
 
-            if (ArtState.lastDecodedImage) {
+            if (ArtState.sourceType === 'import' && ArtState.lastDecodedImage) {
                 traceRasterImage(ArtState.lastDecodedImage, false);
             } else {
                 simplifyProjectedRoute();
@@ -7671,6 +7857,9 @@
     window.removeTraceOverlay = removeTraceOverlay;
     window.unprojectPoint = unprojectPoint;
     window.generateTextArt = generateTextArt;
+    window.generateSingleStrokeTextArt = generateSingleStrokeTextArt;
+    window.SINGLE_STROKE_BLOCK = SINGLE_STROKE_BLOCK;
+    window.SINGLE_STROKE_SCRIPT = SINGLE_STROKE_SCRIPT;
     window.TEXT_FONTS = TEXT_FONTS;
     window.enforceMinLegLength = enforceMinLegLength;
     window.handleToggleAutopilotGhost = handleToggleAutopilotGhost;
