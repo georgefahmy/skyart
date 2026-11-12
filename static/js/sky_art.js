@@ -6806,12 +6806,23 @@
 
         if (accountDropdown) {
             accountDropdown.classList.remove('d-none');
-            if (accountDropdown.style) accountDropdown.style.display = 'block';
+            if (accountDropdown.style) {
+                if (typeof accountDropdown.style.removeProperty === 'function') {
+                    accountDropdown.style.removeProperty('display');
+                }
+                accountDropdown.style.display = 'block';
+            }
         }
         if (openAuthBtn) {
             openAuthBtn.classList.add('d-none');
             openAuthBtn.classList.remove('d-flex');
-            if (openAuthBtn.style) openAuthBtn.style.display = 'none';
+            if (openAuthBtn.style) {
+                if (typeof openAuthBtn.style.setProperty === 'function') {
+                    openAuthBtn.style.setProperty('display', 'none', 'important');
+                } else {
+                    openAuthBtn.style.display = 'none';
+                }
+            }
         }
 
         // Display name priority: pilotName -> tailNumber -> email prefix
@@ -6860,13 +6871,18 @@
 
         // Trigger optional profile popup if newly signed in / registered interactively (first time only)
         if (isInteractiveLogin) {
+            const hasExistingProfile = !!(user.pilotName || user.tailNumber || user.aircraftType || user.homeAirport);
             const onboardKey = 'sky_art_profile_onboarded_' + (user.id || user.email);
             let alreadyOnboarded = false;
             try {
                 alreadyOnboarded = !!localStorage.getItem(onboardKey);
             } catch (e) {}
 
-            if (!alreadyOnboarded) {
+            if (hasExistingProfile) {
+                try {
+                    localStorage.setItem(onboardKey, 'true');
+                } catch (e) {}
+            } else if (!alreadyOnboarded) {
                 try {
                     localStorage.setItem(onboardKey, 'true');
                 } catch (e) {}
@@ -7061,12 +7077,24 @@
         const openAuthBtn = document.getElementById('openAuthModalBtn');
         if (accountDropdown) {
             accountDropdown.classList.add('d-none');
-            if (accountDropdown.style) accountDropdown.style.display = 'none';
+            if (accountDropdown.style) {
+                if (typeof accountDropdown.style.setProperty === 'function') {
+                    accountDropdown.style.setProperty('display', 'none', 'important');
+                } else {
+                    accountDropdown.style.display = 'none';
+                }
+            }
         }
         if (openAuthBtn) {
             openAuthBtn.classList.remove('d-none');
             openAuthBtn.classList.add('d-flex');
-            if (openAuthBtn.style) openAuthBtn.style.display = 'flex';
+            if (openAuthBtn.style) {
+                if (typeof openAuthBtn.style.setProperty === 'function') {
+                    openAuthBtn.style.setProperty('display', 'flex', 'important');
+                } else {
+                    openAuthBtn.style.display = 'flex';
+                }
+            }
         }
     }
 

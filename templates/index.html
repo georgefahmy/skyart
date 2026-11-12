@@ -132,6 +132,9 @@
             color: #f8fafc !important;
             border-color: #475569 !important;
         }
+        #openAuthModalBtn.d-none {
+            display: none !important;
+        }
     </style>
 </head>
 <body>
@@ -185,7 +188,7 @@
                 </ul>
             </div>
             <!-- Sign In Button (Displayed if unauthenticated) -->
-            <button id="openAuthModalBtn" class="btn btn-sm btn-primary py-1 px-2 d-none align-items-center gap-1" type="button" style="display: none;">
+            <button id="openAuthModalBtn" class="btn btn-sm btn-primary py-1 px-2 d-none align-items-center gap-1" type="button" style="display: none !important;">
                 <i class="bi bi-box-arrow-in-right"></i> Sign In
             </button>
             <button id="userGuideBtn" class="btn btn-sm btn-outline-light rounded-circle d-flex align-items-center justify-content-center" data-bs-toggle="modal" data-bs-target="#userGuideModal" title="User Guide & Feature Manual" style="width: 31px; height: 31px; padding: 0; font-weight: bold; font-size: 0.95rem;">
@@ -1827,7 +1830,7 @@
                     </div>
                     <div>
                         <h5 class="modal-title fw-bold mb-0 text-dark" id="pilotProfileModalLabel">Pilot Profile</h5>
-                        <span class="badge bg-secondary-subtle text-secondary" id="profileModalBadge" style="font-size: 0.7rem; font-weight: 600;">Optional Details</span>
+                        <span class="badge bg-secondary-subtle text-secondary" id="profileModalBadge" style="font-size: 0.7rem; font-weight: 600;">Edit Details</span>
                     </div>
                 </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -1872,7 +1875,7 @@
             </div>
             <div class="modal-footer border-top-0 pt-0 px-4 pb-4 d-flex justify-content-between align-items-center">
                 <button type="button" class="btn btn-outline-secondary btn-sm px-3" data-bs-dismiss="modal" id="profileDismissBtn">
-                    Skip for Now
+                    Cancel
                 </button>
                 <button type="button" class="btn btn-primary btn-sm px-4 fw-semibold d-flex align-items-center gap-2" id="saveProfileBtn">
                     <span id="saveProfileBtnText">Save Profile</span>
@@ -1948,7 +1951,7 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 </script>
 
-<script src="/static/js/sky_art.js"></script>
+<script src="/static/js/sky_art.js?v=2.1.1"></script>
 
 </body>
 </html>
