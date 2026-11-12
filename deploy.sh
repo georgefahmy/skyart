@@ -12,6 +12,8 @@ node tests/test_zoom_pan_sync.js
 node tests/test_waypoint_manipulation.js
 node tests/test_theme_map_layer.js
 node tests/test_auth_ui.js
+node tests/test_text_max_waypoints.js
+node tests/test_script_vs_block.js
 ./venv/bin/python3 -m unittest discover tests
 
 echo "🚀 [2/4] Pushing latest local commits to GitHub..."
