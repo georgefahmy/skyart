@@ -7,6 +7,9 @@
 (function () {
     'use strict';
 
+    // Application Version (Synchronized across User Guide, UI Badges, and Cache-Busting)
+    const APP_VERSION = '2.3.3';
+
     // --- User Instance Identification ---
     const USER_ID_STORAGE_KEY = 'sky_art_user_instance_id';
     let currentAuthenticatedUser = null;
@@ -7808,6 +7811,10 @@
 
     // --- DOM Ready ---
     document.addEventListener('DOMContentLoaded', function () {
+        const guideBadge = document.getElementById('userGuideVersionBadge');
+        if (guideBadge) {
+            guideBadge.innerText = 'v' + APP_VERSION;
+        }
         initMap();
         setupAirportControls();
         bindUiControls();
@@ -7868,6 +7875,7 @@
     window.onAuthSuccess = onAuthSuccess;
     window.onAuthRequired = onAuthRequired;
     window.checkPasswordRules = checkPasswordRules;
+    window.APP_VERSION = APP_VERSION;
 
 })();
 

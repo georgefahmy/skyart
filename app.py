@@ -42,7 +42,13 @@ if os.path.exists(ENV_FILE):
         pass
 
 app = Flask(__name__, instance_path=INSTANCE_DIR)
+APP_VERSION = "2.3.3"
 app.secret_key = os.environ.get("SECRET_KEY", "skyart-standalone-secret-key-9281729482")
+
+@app.context_processor
+def inject_app_version():
+    return dict(app_version=APP_VERSION)
+
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
 
 db_path = os.path.join(app.instance_path, "sky_art.db")
