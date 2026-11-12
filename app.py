@@ -269,10 +269,18 @@ def identify_user_instance():
 @app.after_request
 def log_request_access(response):
     client_ip = getattr(request, "_client_ip", None) or get_client_ip()
-    uid = getattr(request, "_skyart_user_id", "-")
-    # Server-side logging of IP address accessing the website
+    user = getattr(request, "_current_user", None)
+    if user:
+        pilot = f" ({user.pilot_name})" if user.pilot_name else ""
+        tail = f" [{user.tail_number}]" if user.tail_number else ""
+        user_str = f"{user.email}{pilot}{tail}"
+    else:
+        uid = getattr(request, "_skyart_user_id", "-")
+        user_str = f"Anonymous ({uid})"
+
+    # Server-side logging of IP address and user accessing the website
     app.logger.info(
-        f"[ACCESS] IP: {client_ip} | User: {uid} | {request.method} {request.path} -> {response.status_code}"
+        f"[ACCESS] IP: {client_ip} | User: {user_str} | {request.method} {request.path} -> {response.status_code}"
     )
     return response
 
@@ -688,7 +696,7 @@ def api_auth_login():
 
     user = SkyArtUser.query.filter_by(email=raw_email).first()
     if not user or not user.check_password(raw_password):
-        app.logger.warning(f"[AUTH] Invalid login for '{raw_email}' from IP: {client_ip}")
+        app.logger.warning(f"[AUTH] Failed login for '{raw_email}' from IP: {client_ip} (Reason: Invalid credentials)")
         return jsonify({"status": "error", "message": "Invalid email or password."}), 401
 
     try:
@@ -699,7 +707,10 @@ def api_auth_login():
         session["user_id"] = user.id
         request._current_user = user
         request._skyart_user_id = user.id
-        app.logger.info(f"[AUTH] Logged in: {user.email} (ID: {user.id}) from IP: {client_ip}")
+        remember_tag = " (RememberMe: 30d)" if remember_me else " (Session)"
+        pilot_tag = f" (Pilot: {user.pilot_name})" if user.pilot_name else ""
+        tail_tag = f" [Tail: {user.tail_number}]" if user.tail_number else ""
+        app.logger.info(f"[AUTH] Logged in: {user.email}{pilot_tag}{tail_tag} (ID: {user.id}) from IP: {client_ip}{remember_tag}")
 
         return jsonify({
             "status": "success",
@@ -716,8 +727,9 @@ def api_auth_login():
 def api_auth_logout():
     """Log out current user and invalidate session."""
     user = get_current_user()
+    client_ip = get_client_ip()
     if user:
-        app.logger.info(f"[AUTH] Logged out: {user.email} (ID: {user.id})")
+        app.logger.info(f"[AUTH] Logged out: {user.email} (ID: {user.id}) from IP: {client_ip}")
     session.clear()
     return jsonify({"status": "success", "message": "Logged out successfully."})
 
@@ -915,9 +927,10 @@ def api_save_sky_art_drawing():
             drawing.base_contours_json = None
 
         db.session.commit()
-        # Server-side logging of saved art name associated with client IP address
+        # Server-side logging of saved art name associated with client IP address and user
+        user_info = f"{user.email} (Tail: {user.tail_number or '-'})" if user else uid
         app.logger.info(
-            f'[SAVED ART] IP: {client_ip} | Art Name: "{drawing.name}" | ID: {drawing.id} | User: {uid}'
+            f'[SAVED ART] IP: {client_ip} | User: {user_info} | Art Name: "{drawing.name}" | ID: {drawing.id} | Points: {drawing.point_count} | Size: {drawing.size_nm}NM'
         )
         return jsonify({"status": "success", "drawing": drawing.to_dict()})
     except Exception as e:
@@ -943,8 +956,9 @@ def api_delete_sky_art_drawing(drawing_id):
             art_name = drawing.name
             db.session.delete(drawing)
             db.session.commit()
+            user_info = user.email if user else uid
             app.logger.info(
-                f'[DELETED ART] IP: {client_ip} | Art Name: "{art_name}" | ID: {drawing_id} | User: {uid}'
+                f'[DELETED ART] IP: {client_ip} | User: {user_info} | Art Name: "{art_name}" | ID: {drawing_id}'
             )
             return jsonify({"status": "success"})
         return jsonify({"status": "not_found"}), 404
@@ -1021,6 +1035,11 @@ def api_save_home_airport():
             user.home_airport = icao
 
         db.session.commit()
+        client_ip = getattr(request, "_client_ip", None) or get_client_ip()
+        user_info = user.email if user else uid
+        app.logger.info(
+            f'[HOME AIRPORT] IP: {client_ip} | User: {user_info} | Configured Default Home: {icao} - {name}'
+        )
         return jsonify({"status": "success", "airport": record.to_dict()})
     except Exception as e:
         db.session.rollback()
@@ -1092,6 +1111,13 @@ def api_sky_art_export_fpl():
         xml_lines.extend(["  </route>", "</flight-plan>"])
         xml_content = "\n".join(xml_lines)
 
+        client_ip = getattr(request, "_client_ip", None) or get_client_ip()
+        user = getattr(request, "_current_user", None) or get_current_user()
+        user_info = user.email if user else (getattr(request, "_skyart_user_id", None) or "Anonymous")
+        app.logger.info(
+            f'[EXPORT] IP: {client_ip} | User: {user_info} | Exported ForeFlight .fpl: "{route_name}" ({len(waypoints)} waypoints)'
+        )
+
         resp = make_response(xml_content)
         resp.headers["Content-Type"] = "application/xml"
         resp.headers["Content-Disposition"] = f"attachment; filename={route_name}.fpl"
@@ -1133,6 +1159,13 @@ def api_sky_art_export_gpx():
 
         xml_lines.extend(["  </rte>", "</gpx>"])
         xml_content = "\n".join(xml_lines)
+
+        client_ip = getattr(request, "_client_ip", None) or get_client_ip()
+        user = getattr(request, "_current_user", None) or get_current_user()
+        user_info = user.email if user else (getattr(request, "_skyart_user_id", None) or "Anonymous")
+        app.logger.info(
+            f'[EXPORT] IP: {client_ip} | User: {user_info} | Exported GPX: "{route_name}" ({len(waypoints)} waypoints)'
+        )
 
         resp = make_response(xml_content)
         resp.headers["Content-Type"] = "application/gpx+xml"
@@ -1178,6 +1211,13 @@ def api_sky_art_export_kml():
             ]
         )
         xml_content = "\n".join(xml_lines)
+
+        client_ip = getattr(request, "_client_ip", None) or get_client_ip()
+        user = getattr(request, "_current_user", None) or get_current_user()
+        user_info = user.email if user else (getattr(request, "_skyart_user_id", None) or "Anonymous")
+        app.logger.info(
+            f'[EXPORT] IP: {client_ip} | User: {user_info} | Exported KML: "{route_name}" ({len(waypoints)} waypoints)'
+        )
 
         resp = make_response(xml_content)
         resp.headers["Content-Type"] = "application/vnd.google-earth.kml+xml"
