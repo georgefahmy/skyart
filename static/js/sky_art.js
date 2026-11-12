@@ -9,8 +9,12 @@
 
     // --- User Instance Identification ---
     const USER_ID_STORAGE_KEY = 'sky_art_user_instance_id';
+    let currentAuthenticatedUser = null;
 
     function getUserInstanceId() {
+        if (currentAuthenticatedUser && currentAuthenticatedUser.id) {
+            return currentAuthenticatedUser.id;
+        }
         let uid = null;
         try {
             uid = localStorage.getItem(USER_ID_STORAGE_KEY);
@@ -164,6 +168,7 @@
         simplificationTolerance: 0.015, // RDP epsilon
         cruiseSpeedKts: 150,   // RV-7 default cruise speed
         fuelFlowGPH: 8.5,      // RV-7 default fuel burn
+        currentUser: null,     // Authenticated SkyArt user
         includeAirport: true,
         optimizeEntryExit: true, // Auto-optimize start/end waypoint for shortest transit
         routeReversed: false,    // Reverse traversal direction
@@ -4436,8 +4441,10 @@
                 const localDrawings = getSavedDrawings();
 
                 const mergedMap = new Map();
-                // Add server drawings first
-                serverDrawings.forEach(d => mergedMap.set(d.id, d));
+                // Add server drawings first if valid array
+                if (Array.isArray(serverDrawings)) {
+                    serverDrawings.forEach(d => mergedMap.set(d.id, d));
+                }
 
                 // Check for local drawings that aren't on server yet, and upload them
                 for (const localD of localDrawings) {
@@ -4619,6 +4626,8 @@
 
     function renderSavedDrawingsDropdown() {
         const drawings = getSavedDrawings();
+        const userArtCount = document.getElementById('userAccountDrawingsCount');
+        if (userArtCount) userArtCount.innerText = String(drawings.length);
         const container = document.getElementById('tabPresetsUnifiedContainer');
         if (!container) return;
 
@@ -6760,18 +6769,508 @@
         });
     }
 
+    // --- Authentication & User Account Management ---
+    async function checkAuthStatus() {
+        try {
+            const res = await fetch('/api/auth/me', { headers: getApiHeaders() });
+            if (res.ok) {
+                const data = await res.json();
+                if (data && data.authenticated && data.user) {
+                    onAuthSuccess(data.user, false);
+                    return true;
+                }
+            }
+        } catch (e) {
+            console.warn("Auth check error:", e);
+        }
+        onAuthRequired();
+        return false;
+    }
+
+    function onAuthSuccess(user, isInteractiveLogin) {
+        currentAuthenticatedUser = user;
+        ArtState.currentUser = user;
+        const overlay = document.getElementById('authGateOverlay');
+        if (overlay && overlay.style) overlay.style.display = 'none';
+
+        const accountDropdown = document.getElementById('userAccountDropdownContainer');
+        const openAuthBtn = document.getElementById('openAuthModalBtn');
+        const emailBadge = document.getElementById('userAccountEmailBadge');
+        const menuName = document.getElementById('userAccountMenuName');
+        const menuEmail = document.getElementById('userAccountMenuEmail');
+        const memberSince = document.getElementById('userAccountMemberSince');
+        const aircraftBadge = document.getElementById('userAccountAircraftBadge');
+        const aircraftText = document.getElementById('userAccountAircraftText');
+        const homeAptBadge = document.getElementById('userAccountHomeAirportBadge');
+        const homeAptText = document.getElementById('userAccountHomeAirportText');
+
+        if (accountDropdown) {
+            accountDropdown.classList.remove('d-none');
+            if (accountDropdown.style) accountDropdown.style.display = 'block';
+        }
+        if (openAuthBtn) {
+            openAuthBtn.classList.add('d-none');
+            openAuthBtn.classList.remove('d-flex');
+            if (openAuthBtn.style) openAuthBtn.style.display = 'none';
+        }
+
+        // Display name priority: pilotName -> tailNumber -> email prefix
+        const displayName = user.pilotName || user.tailNumber || (user.email ? user.email.split('@')[0] : 'Pilot');
+        if (emailBadge) {
+            emailBadge.innerText = displayName;
+            emailBadge.title = user.email || displayName;
+        }
+        if (menuName) menuName.innerText = displayName;
+        if (menuEmail) menuEmail.innerText = user.email || '';
+
+        // Aircraft badge
+        const aircraftParts = [];
+        if (user.tailNumber) aircraftParts.push(user.tailNumber);
+        if (user.aircraftType) aircraftParts.push(user.aircraftType);
+        if (aircraftBadge && aircraftText) {
+            if (aircraftParts.length > 0) {
+                aircraftText.innerText = aircraftParts.join(' • ');
+                aircraftBadge.classList.remove('d-none');
+            } else {
+                aircraftBadge.classList.add('d-none');
+            }
+        }
+
+        // Home airport badge
+        if (homeAptBadge && homeAptText) {
+            if (user.homeAirport) {
+                homeAptText.innerText = user.homeAirport;
+                homeAptBadge.classList.remove('d-none');
+            } else {
+                homeAptBadge.classList.add('d-none');
+            }
+        }
+
+        if (memberSince && user.createdAt) {
+            try {
+                const d = new Date(user.createdAt);
+                memberSince.innerText = 'Member since ' + d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+            } catch (e) {}
+        }
+
+        migrateLocalDrawingsIfNeeded().finally(() => {
+            syncSavedDrawingsWithServer();
+            syncHomeAirportWithServer();
+        });
+
+        // Trigger optional profile popup if newly signed in / registered interactively (first time only)
+        if (isInteractiveLogin) {
+            const onboardKey = 'sky_art_profile_onboarded_' + (user.id || user.email);
+            let alreadyOnboarded = false;
+            try {
+                alreadyOnboarded = !!localStorage.getItem(onboardKey);
+            } catch (e) {}
+
+            if (!alreadyOnboarded) {
+                try {
+                    localStorage.setItem(onboardKey, 'true');
+                } catch (e) {}
+                setTimeout(() => {
+                    showPilotProfileModal(user, true);
+                }, 350);
+            }
+        }
+    }
+
+    function populateProfileModal(user) {
+        user = user || currentAuthenticatedUser || ArtState.currentUser || {};
+        const nameInput = document.getElementById('profilePilotNameInput');
+        const tailInput = document.getElementById('profileTailNumberInput');
+        const airportInput = document.getElementById('profileHomeAirportInput');
+        const typeInput = document.getElementById('profileAircraftTypeInput');
+        const alertBox = document.getElementById('profileFormAlert');
+
+        if (nameInput) nameInput.value = user.pilotName || '';
+        if (tailInput) tailInput.value = user.tailNumber || '';
+        if (airportInput) airportInput.value = user.homeAirport || (ArtState.homeAirport?.icao || '');
+        if (typeInput) typeInput.value = user.aircraftType || '';
+        if (alertBox) {
+            alertBox.classList.add('d-none');
+            alertBox.innerText = '';
+        }
+    }
+
+    function showPilotProfileModal(user, isFirstTimeOnboarding = false) {
+        populateProfileModal(user);
+        const dismissBtn = document.getElementById('profileDismissBtn');
+        const modalBadge = document.getElementById('profileModalBadge');
+
+        if (dismissBtn) {
+            dismissBtn.innerText = isFirstTimeOnboarding ? 'Skip for Now' : 'Cancel';
+        }
+        if (modalBadge) {
+            modalBadge.innerText = isFirstTimeOnboarding ? 'Optional Details' : 'Edit Details';
+        }
+
+        const modalEl = document.getElementById('pilotProfileModal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            const bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            bsModal.show();
+        }
+    }
+
+    function setupProfileUI() {
+        const modalEl = document.getElementById('pilotProfileModal');
+        const openBtn = document.getElementById('openProfileModalBtn');
+        const saveBtn = document.getElementById('saveProfileBtn');
+        const saveSpinner = document.getElementById('saveProfileSpinner');
+        const saveBtnText = document.getElementById('saveProfileBtnText');
+        const alertBox = document.getElementById('profileFormAlert');
+        const airportInput = document.getElementById('profileHomeAirportInput');
+        const airportResults = document.getElementById('profileHomeSearchResults');
+
+        if (openBtn) {
+            openBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                showPilotProfileModal(currentAuthenticatedUser, false);
+            });
+        }
+
+        // Airport autocomplete inside Profile Modal
+        let apTimeout = null;
+        if (airportInput && airportResults) {
+            airportInput.addEventListener('input', () => {
+                clearTimeout(apTimeout);
+                const q = airportInput.value.trim().toUpperCase();
+                if (q.length < 2) {
+                    airportResults.classList.add('d-none');
+                    airportResults.innerHTML = '';
+                    return;
+                }
+                apTimeout = setTimeout(() => {
+                    searchAirports(q, (airports) => {
+                        if (!airports || airports.length === 0) {
+                            airportResults.innerHTML = '<div class="p-2 text-muted small">No matching airports</div>';
+                            airportResults.classList.remove('d-none');
+                            return;
+                        }
+                        let html = '';
+                        airports.slice(0, 8).forEach(ap => {
+                            const code = ap.icao || ap.faa || ap.iata;
+                            const loc = typeof formatAirportSubtitle === 'function' ? formatAirportSubtitle(ap) : (ap.city || '');
+                            html += `<div class="airport-autocomplete-item p-2 border-bottom small" data-code="${code}" style="cursor: pointer;">
+                                <strong>${code}</strong> - ${ap.name} <span class="text-muted">(${loc})</span>
+                            </div>`;
+                        });
+                        airportResults.innerHTML = html;
+                        airportResults.classList.remove('d-none');
+                    });
+                }, 180);
+            });
+
+            airportResults.addEventListener('click', (e) => {
+                const item = e.target.closest('.airport-autocomplete-item');
+                if (item) {
+                    const code = item.getAttribute('data-code');
+                    if (code) airportInput.value = code;
+                    airportResults.classList.add('d-none');
+                }
+            });
+
+            document.addEventListener('click', (e) => {
+                if (airportInput && airportResults && !airportInput.contains(e.target) && !airportResults.contains(e.target)) {
+                    airportResults.classList.add('d-none');
+                }
+            });
+        }
+
+        if (saveBtn) {
+            saveBtn.addEventListener('click', async () => {
+                if (alertBox) alertBox.classList.add('d-none');
+
+                const pilotName = document.getElementById('profilePilotNameInput')?.value?.trim() || '';
+                const tailNumber = (document.getElementById('profileTailNumberInput')?.value?.trim() || '').toUpperCase();
+                const homeAirport = (document.getElementById('profileHomeAirportInput')?.value?.trim() || '').toUpperCase();
+                const aircraftType = document.getElementById('profileAircraftTypeInput')?.value?.trim() || '';
+
+                if (saveBtn) saveBtn.disabled = true;
+                if (saveSpinner) saveSpinner.classList.remove('d-none');
+                if (saveBtnText) saveBtnText.innerText = 'Saving...';
+
+                try {
+                    const res = await fetch('/api/user/profile', {
+                        method: 'POST',
+                        headers: getApiHeaders({ 'Content-Type': 'application/json' }),
+                        body: JSON.stringify({ pilotName, tailNumber, homeAirport, aircraftType })
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (res.ok && data.user) {
+                        try {
+                            localStorage.setItem('sky_art_profile_onboarded_' + (data.user.id || data.user.email), 'true');
+                        } catch (e) {}
+                        currentAuthenticatedUser = data.user;
+                        ArtState.currentUser = data.user;
+                        onAuthSuccess(data.user, false);
+
+                        // If user chose a home airport and it differs from ArtState, update it
+                        if (homeAirport && (!ArtState.homeAirport || ArtState.homeAirport.icao !== homeAirport)) {
+                            searchAirports(homeAirport, (results) => {
+                                if (results && results.length > 0) {
+                                    const matched = results.find(a => (a.icao === homeAirport || a.iata === homeAirport || a.faa === homeAirport)) || results[0];
+                                    if (matched) {
+                                        saveConfiguredHomeAirport(matched);
+                                        ArtState.depAirport = { ...matched };
+                                        ArtState.arrAirport = { ...matched };
+                                        const depInput = document.getElementById('depAirportInput');
+                                        const arrInput = document.getElementById('arrAirportInput');
+                                        if (depInput) depInput.value = matched.icao;
+                                        if (arrInput) arrInput.value = matched.icao;
+                                        buildFullFlightPlan();
+                                        renderRouteOnMap();
+                                    }
+                                }
+                            });
+                        }
+
+                        if (modalEl && typeof bootstrap !== 'undefined') {
+                            const bsModal = bootstrap.Modal.getInstance(modalEl);
+                            if (bsModal) bsModal.hide();
+                        }
+                    } else {
+                        if (alertBox) {
+                            alertBox.innerText = data.message || 'Failed to update profile.';
+                            alertBox.classList.remove('d-none');
+                        }
+                    }
+                } catch (err) {
+                    if (alertBox) {
+                        alertBox.innerText = 'Network error saving profile.';
+                        alertBox.classList.remove('d-none');
+                    }
+                } finally {
+                    if (saveBtn) saveBtn.disabled = false;
+                    if (saveSpinner) saveSpinner.classList.add('d-none');
+                    if (saveBtnText) saveBtnText.innerText = 'Save Profile';
+                }
+            });
+        }
+    }
+
+    function onAuthRequired() {
+        currentAuthenticatedUser = null;
+        ArtState.currentUser = null;
+        const overlay = document.getElementById('authGateOverlay');
+        if (overlay && overlay.style) overlay.style.display = 'flex';
+
+        const accountDropdown = document.getElementById('userAccountDropdownContainer');
+        const openAuthBtn = document.getElementById('openAuthModalBtn');
+        if (accountDropdown) {
+            accountDropdown.classList.add('d-none');
+            if (accountDropdown.style) accountDropdown.style.display = 'none';
+        }
+        if (openAuthBtn) {
+            openAuthBtn.classList.remove('d-none');
+            openAuthBtn.classList.add('d-flex');
+            if (openAuthBtn.style) openAuthBtn.style.display = 'flex';
+        }
+    }
+
+    async function migrateLocalDrawingsIfNeeded() {
+        const localDrawings = getSavedDrawings();
+        if (!localDrawings || localDrawings.length === 0) return;
+
+        try {
+            await fetch('/api/sky_art/drawings/migrate', {
+                method: 'POST',
+                headers: getApiHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({ drawings: localDrawings })
+            });
+        } catch (e) {
+            console.warn("Error migrating local drawings:", e);
+        }
+    }
+
+    function checkPasswordRules(password) {
+        return {
+            len: password.length >= 8,
+            upper: /[A-Z]/.test(password),
+            lower: /[a-z]/.test(password),
+            num: /[0-9]/.test(password),
+            special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)
+        };
+    }
+
+    function updatePasswordRequirementsUI(rules) {
+        function updateItem(elId, passed, text) {
+            const el = document.getElementById(elId);
+            if (!el) return;
+            el.className = passed ? 'text-success' : 'text-danger';
+            el.innerHTML = passed
+                ? `<i class="bi bi-check-circle-fill me-1"></i>${text}`
+                : `<i class="bi bi-x-circle me-1"></i>${text}`;
+        }
+        updateItem('pwReqLen', rules.len, 'At least 8 characters');
+        updateItem('pwReqUpper', rules.upper, 'At least 1 uppercase letter (A-Z)');
+        updateItem('pwReqLower', rules.lower, 'At least 1 lowercase letter (a-z)');
+        updateItem('pwReqNum', rules.num, 'At least 1 number (0-9)');
+        updateItem('pwReqSpecial', rules.special, 'At least 1 special character (!@#$%^&* etc.)');
+    }
+
+    function setupAuthUI() {
+        const tabSignInBtn = document.getElementById('tabSignInBtn');
+        const tabRegisterBtn = document.getElementById('tabRegisterBtn');
+        const authModeInput = document.getElementById('authMode');
+        const authSubmitBtnText = document.getElementById('authSubmitBtnText');
+        const authPasswordRequirements = document.getElementById('authPasswordRequirements');
+        const authAlertBanner = document.getElementById('authAlertBanner');
+        const authEmailInput = document.getElementById('authEmailInput');
+        const authPasswordInput = document.getElementById('authPasswordInput');
+        const authForm = document.getElementById('authForm');
+        const togglePwBtn = document.getElementById('togglePasswordVisibilityBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const openAuthBtn = document.getElementById('openAuthModalBtn');
+        const submitSpinner = document.getElementById('authSubmitSpinner');
+        const submitBtn = document.getElementById('authSubmitBtn');
+
+        function setAuthMode(mode) {
+            if (!authModeInput) return;
+            authModeInput.value = mode;
+            if (authAlertBanner) authAlertBanner.classList.add('d-none');
+
+            if (mode === 'register') {
+                if (tabRegisterBtn) tabRegisterBtn.classList.add('active');
+                if (tabSignInBtn) tabSignInBtn.classList.remove('active');
+                if (authSubmitBtnText) authSubmitBtnText.innerText = 'Create Account';
+                if (authPasswordRequirements) authPasswordRequirements.classList.remove('d-none');
+            } else {
+                if (tabSignInBtn) tabSignInBtn.classList.add('active');
+                if (tabRegisterBtn) tabRegisterBtn.classList.remove('active');
+                if (authSubmitBtnText) authSubmitBtnText.innerText = 'Sign In to SkyArt';
+                if (authPasswordRequirements) authPasswordRequirements.classList.add('d-none');
+            }
+        }
+
+        tabSignInBtn?.addEventListener('click', () => setAuthMode('login'));
+        tabRegisterBtn?.addEventListener('click', () => setAuthMode('register'));
+
+        if (authPasswordInput) {
+            authPasswordInput.addEventListener('input', () => {
+                if (authModeInput && authModeInput.value === 'register') {
+                    const rules = checkPasswordRules(authPasswordInput.value);
+                    updatePasswordRequirementsUI(rules);
+                }
+            });
+        }
+
+        togglePwBtn?.addEventListener('click', () => {
+            if (!authPasswordInput) return;
+            const isPassword = authPasswordInput.type === 'password';
+            authPasswordInput.type = isPassword ? 'text' : 'password';
+            togglePwBtn.innerHTML = isPassword ? '<i class="bi bi-eye-slash"></i>' : '<i class="bi bi-eye"></i>';
+        });
+
+        openAuthBtn?.addEventListener('click', () => {
+            const overlay = document.getElementById('authGateOverlay');
+            if (overlay) overlay.style.display = 'flex';
+        });
+
+        logoutBtn?.addEventListener('click', async () => {
+            try {
+                await fetch('/api/auth/logout', { method: 'POST', headers: getApiHeaders() });
+            } catch (e) {
+                console.warn("Logout error:", e);
+            }
+            onAuthRequired();
+            inMemorySavedDrawings = [];
+            renderSavedDrawingsDropdown();
+        });
+
+        authForm?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (authAlertBanner) authAlertBanner.classList.add('d-none');
+
+            const email = (authEmailInput?.value || '').trim();
+            const password = authPasswordInput?.value || '';
+            const rememberMe = !!document.getElementById('authRememberMeCheck')?.checked;
+            const mode = authModeInput?.value || 'login';
+
+            // Basic client-side validation
+            if (!email || !email.includes('@') || !email.includes('.')) {
+                if (authAlertBanner) {
+                    authAlertBanner.innerText = 'Please enter a valid email address.';
+                    authAlertBanner.classList.remove('d-none');
+                }
+                authEmailInput?.focus();
+                return;
+            }
+
+            if (!password) {
+                if (authAlertBanner) {
+                    authAlertBanner.innerText = 'Please enter your password.';
+                    authAlertBanner.classList.remove('d-none');
+                }
+                authPasswordInput?.focus();
+                return;
+            }
+
+            if (mode === 'register') {
+                const rules = checkPasswordRules(password);
+                if (!rules.len || !rules.upper || !rules.lower || !rules.num || !rules.special) {
+                    if (authAlertBanner) {
+                        authAlertBanner.innerText = 'Please meet all password requirements before creating your account.';
+                        authAlertBanner.classList.remove('d-none');
+                    }
+                    if (authPasswordRequirements) authPasswordRequirements.classList.remove('d-none');
+                    updatePasswordRequirementsUI(rules);
+                    authPasswordInput?.focus();
+                    return;
+                }
+            }
+
+            // Submit
+            if (submitBtn) submitBtn.disabled = true;
+            if (submitSpinner) submitSpinner.classList.remove('d-none');
+
+            try {
+                const endpoint = mode === 'register' ? '/api/auth/register' : '/api/auth/login';
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password, rememberMe })
+                });
+
+                const data = await res.json().catch(() => ({}));
+
+                if (res.ok && data.user) {
+                    onAuthSuccess(data.user, true);
+                    if (authPasswordInput) authPasswordInput.value = '';
+                } else {
+                    const msg = data.message || 'Authentication failed. Please check your credentials and try again.';
+                    if (authAlertBanner) {
+                        authAlertBanner.innerText = msg;
+                        authAlertBanner.classList.remove('d-none');
+                    }
+                }
+            } catch (err) {
+                if (authAlertBanner) {
+                    authAlertBanner.innerText = 'Network error. Please try again.';
+                    authAlertBanner.classList.remove('d-none');
+                }
+            } finally {
+                if (submitBtn) submitBtn.disabled = false;
+                if (submitSpinner) submitSpinner.classList.add('d-none');
+            }
+        });
+    }
+
     // --- DOM Ready ---
     document.addEventListener('DOMContentLoaded', function () {
         initMap();
         setupAirportControls();
         bindUiControls();
+        setupAuthUI();
+        setupProfileUI();
         setupFeedbackForm();
         updateCenterInputs();
         updateHomeAirportUI();
         syncDimensionInputs();
         renderSavedDrawingsDropdown();
-        syncSavedDrawingsWithServer();
-        syncHomeAirportWithServer();
+        checkAuthStatus();
         HistoryManager.updateButtons();
     });
 
@@ -6782,6 +7281,9 @@
     window.loadConfiguredHomeAirport = loadConfiguredHomeAirport;
     window.saveConfiguredHomeAirport = saveConfiguredHomeAirport;
     window.syncHomeAirportWithServer = syncHomeAirportWithServer;
+    window.showPilotProfileModal = showPilotProfileModal;
+    window.populateProfileModal = populateProfileModal;
+    window.setupProfileUI = setupProfileUI;
     window.generateForeFlightRouteString = generateForeFlightRouteString;
     window.generateGarminFplXml = generateGarminFplXml;
     window.generateForeFlightMobileUrl = generateForeFlightMobileUrl;
@@ -6809,6 +7311,10 @@
     window.enforceMinLegLength = enforceMinLegLength;
     window.handleToggleAutopilotGhost = handleToggleAutopilotGhost;
     window.renderRouteOnMap = renderRouteOnMap;
+    window.checkAuthStatus = checkAuthStatus;
+    window.onAuthSuccess = onAuthSuccess;
+    window.onAuthRequired = onAuthRequired;
+    window.checkPasswordRules = checkPasswordRules;
 
 })();
 

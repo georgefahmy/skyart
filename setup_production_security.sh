@@ -61,8 +61,8 @@ server {
         log_not_found off;
     }
 
-    # Block common automated bot probes & web vulnerability scanners
-    location ~* (\.php|wp-admin|wp-login|xmlrpc\.php|phpmyadmin|\.bak|\.sql)$ {
+    # Block common automated bot probes, config file leaks & web vulnerability scanners
+    location ~* (\.php|wp-admin|wp-login|xmlrpc\.php|phpmyadmin|\.bak|\.sql|composer\.json|appsettings.*\.json|auth\.json|package\.json|\.env)$ {
         deny all;
         access_log off;
         log_not_found off;

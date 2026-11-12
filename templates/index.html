@@ -59,6 +59,79 @@
         .card-header[data-bs-toggle="collapse"].collapsed .collapse-icon {
             transform: rotate(180deg);
         }
+
+        /* Full-Screen Authentication Gate Overlay */
+        .auth-gate-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .auth-gate-backdrop {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 23, 42, 0.88);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+        .auth-gate-container {
+            position: relative;
+            z-index: 10001;
+            width: 100%;
+            max-width: 440px;
+            padding: 1rem;
+        }
+        .auth-card {
+            border-radius: 1rem;
+            box-shadow: 0 20px 40px -15px rgba(0,0,0,0.5);
+            background: #ffffff;
+        }
+        body.dark-mode .auth-card {
+            background: #1e293b;
+            color: #f8fafc;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        }
+        body.dark-mode .auth-card .bg-light {
+            background: #0f172a !important;
+            border-color: rgba(255, 255, 255, 0.1) !important;
+        }
+        body.dark-mode .auth-card .input-group-text {
+            background: #334155 !important;
+            color: #cbd5e1 !important;
+            border-color: #475569 !important;
+        }
+        body.dark-mode .auth-card input.form-control {
+            background: #0f172a !important;
+            color: #f8fafc !important;
+            border-color: #475569 !important;
+        }
+        body.dark-mode #pilotProfileModal .modal-content {
+            background: #1e293b;
+            color: #f8fafc;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        }
+        body.dark-mode #pilotProfileModal .bg-light {
+            background: #0f172a !important;
+            border-color: rgba(255, 255, 255, 0.1) !important;
+        }
+        body.dark-mode #pilotProfileModal .input-group-text {
+            background: #334155 !important;
+            color: #cbd5e1 !important;
+            border-color: #475569 !important;
+        }
+        body.dark-mode #pilotProfileModal input.form-control {
+            background: #0f172a !important;
+            color: #f8fafc !important;
+            border-color: #475569 !important;
+        }
     </style>
 </head>
 <body>
@@ -78,6 +151,43 @@
         </div>
 
         <div class="d-flex align-items-center gap-2 ms-auto flex-shrink-0">
+            <!-- User Account Menu (Populated when logged in) -->
+            <div class="dropdown" id="userAccountDropdownContainer" style="display: none; position: relative; z-index: 1065;">
+                <button class="btn btn-sm btn-outline-light dropdown-toggle d-flex align-items-center gap-1 py-1 px-2" type="button" id="userAccountMenuBtn" data-bs-toggle="dropdown" aria-expanded="false" title="Account Settings">
+                    <i class="bi bi-person-circle text-info"></i>
+                    <span class="small fw-semibold text-truncate d-none d-sm-inline" id="userAccountEmailBadge" style="max-width: 140px;">Account</span>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end shadow p-2" aria-labelledby="userAccountMenuBtn" style="min-width: 250px; font-size: 0.82rem; z-index: 1070;">
+                    <li class="px-2 py-1">
+                        <div class="text-uppercase text-muted fw-bold" style="font-size: 0.65rem; letter-spacing: 0.5px;">Pilot Account</div>
+                        <div class="fw-bold text-dark text-truncate mt-1 fs-6" id="userAccountMenuName">-</div>
+                        <div class="text-muted text-truncate small" id="userAccountMenuEmail">-</div>
+                        <div class="small text-primary mt-1 d-none" id="userAccountAircraftBadge"><i class="bi bi-airplane-fill me-1"></i><span id="userAccountAircraftText"></span></div>
+                        <div class="small text-muted d-none" id="userAccountHomeAirportBadge"><i class="bi bi-geo-alt-fill me-1 text-danger"></i>Home: <span id="userAccountHomeAirportText"></span></div>
+                        <div class="text-muted small mt-1" id="userAccountMemberSince" style="font-size: 0.72rem;">Active Session</div>
+                    </li>
+                    <li><hr class="dropdown-divider my-1"></li>
+                    <li>
+                        <button class="dropdown-item d-flex align-items-center gap-2 py-1" id="openProfileModalBtn" type="button">
+                            <i class="bi bi-person-gear text-primary"></i> Pilot Profile
+                        </button>
+                    </li>
+                    <li class="px-2 py-1 d-flex justify-content-between align-items-center">
+                        <span class="text-muted"><i class="bi bi-bookmark-fill text-primary me-1"></i>Saved Drawings:</span>
+                        <span class="badge bg-primary rounded-pill" id="userAccountDrawingsCount">0</span>
+                    </li>
+                    <li><hr class="dropdown-divider my-1"></li>
+                    <li>
+                        <button class="dropdown-item text-danger d-flex align-items-center gap-2 py-1" id="logoutBtn" type="button">
+                            <i class="bi bi-box-arrow-right"></i> Log Out
+                        </button>
+                    </li>
+                </ul>
+            </div>
+            <!-- Sign In Button (Displayed if unauthenticated) -->
+            <button id="openAuthModalBtn" class="btn btn-sm btn-primary py-1 px-2 d-none align-items-center gap-1" type="button" style="display: none;">
+                <i class="bi bi-box-arrow-in-right"></i> Sign In
+            </button>
             <button id="userGuideBtn" class="btn btn-sm btn-outline-light rounded-circle d-flex align-items-center justify-content-center" data-bs-toggle="modal" data-bs-target="#userGuideModal" title="User Guide & Feature Manual" style="width: 31px; height: 31px; padding: 0; font-weight: bold; font-size: 0.95rem;">
                 <i class="bi bi-question-lg"></i>
             </button>
@@ -1614,6 +1724,159 @@
                 </div>
                 <button type="button" class="btn btn-primary btn-sm px-3" data-bs-dismiss="modal">
                     Got it, Let's Fly!
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Full-Screen Authentication Gate Overlay -->
+<div id="authGateOverlay" class="auth-gate-overlay" style="display: none;">
+    <div class="auth-gate-backdrop"></div>
+    <div class="auth-gate-container">
+        <div class="card auth-card shadow-lg border-0">
+            <div class="card-body p-4 p-md-5">
+                <!-- Branding Header -->
+                <div class="text-center mb-4">
+                    <div class="d-inline-flex align-items-center justify-content-center p-2 rounded-3 bg-dark mb-2 shadow-sm">
+                        <img src="/static/img/logo.svg" alt="SkyArt Logo" width="46" height="46" class="rounded-2">
+                    </div>
+                    <h3 class="fw-bold mb-1">SkyArt <span class="badge bg-warning text-dark fs-6 align-middle">Studio</span></h3>
+                    <p class="text-muted small mb-0">GPS Flight Art &amp; Flight Plan Generator</p>
+                </div>
+
+                <!-- Alert Message Banner -->
+                <div id="authAlertBanner" class="alert alert-danger py-2 px-3 small d-none" role="alert"></div>
+
+                <!-- Auth Navigation Tabs (Sign In / Create Account) -->
+                <ul class="nav nav-pills nav-fill mb-3" id="authTabNav" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active fw-bold py-2" id="tabSignInBtn" type="button">Sign In</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link fw-bold py-2" id="tabRegisterBtn" type="button">Create Account</button>
+                    </li>
+                </ul>
+
+                <!-- Auth Form -->
+                <form id="authForm" novalidate>
+                    <input type="hidden" id="authMode" value="login">
+
+                    <div class="mb-3">
+                        <label for="authEmailInput" class="form-label small fw-bold text-muted mb-1">Email Address</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light text-muted"><i class="bi bi-envelope"></i></span>
+                            <input type="email" class="form-control" id="authEmailInput" placeholder="pilot@example.com" required autocomplete="email">
+                        </div>
+                        <div class="form-text text-danger small d-none" id="authEmailError"></div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label for="authPasswordInput" class="form-label small fw-bold text-muted mb-0">Password</label>
+                        </div>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light text-muted"><i class="bi bi-lock"></i></span>
+                            <input type="password" class="form-control" id="authPasswordInput" placeholder="••••••••" required autocomplete="current-password">
+                            <button class="btn btn-outline-secondary" type="button" id="togglePasswordVisibilityBtn" title="Show/Hide Password">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </div>
+                        <div class="form-text text-danger small d-none" id="authPasswordError"></div>
+                    </div>
+
+                    <!-- Password Requirements Checklist (Shown when Create Account is active) -->
+                    <div id="authPasswordRequirements" class="p-2 rounded bg-light border mb-3 small d-none" style="font-size: 0.74rem;">
+                        <div class="fw-bold text-muted mb-1">Password Requirements:</div>
+                        <div id="pwReqLen" class="text-danger"><i class="bi bi-x-circle me-1"></i>At least 8 characters</div>
+                        <div id="pwReqUpper" class="text-danger"><i class="bi bi-x-circle me-1"></i>At least 1 uppercase letter (A-Z)</div>
+                        <div id="pwReqLower" class="text-danger"><i class="bi bi-x-circle me-1"></i>At least 1 lowercase letter (a-z)</div>
+                        <div id="pwReqNum" class="text-danger"><i class="bi bi-x-circle me-1"></i>At least 1 number (0-9)</div>
+                        <div id="pwReqSpecial" class="text-danger"><i class="bi bi-x-circle me-1"></i>At least 1 special character (!@#$%^&* etc.)</div>
+                    </div>
+
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="authRememberMeCheck" checked>
+                        <label class="form-check-label small text-muted" for="authRememberMeCheck">
+                            Remember me on this device (30 days)
+                        </label>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100 py-2 fw-bold d-flex align-items-center justify-content-center gap-2" id="authSubmitBtn">
+                        <span id="authSubmitBtnText">Sign In to SkyArt</span>
+                        <span class="spinner-border spinner-border-sm d-none" id="authSubmitSpinner" role="status" aria-hidden="true"></span>
+                    </button>
+                </form>
+
+                <div class="text-center mt-3 text-muted small" style="font-size: 0.72rem;">
+                    <i class="bi bi-shield-lock me-1"></i> Required to associate and sync your flight art with your account.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Pilot Profile (Optional details popup shown after login/registration or on demand) -->
+<div class="modal fade" id="pilotProfileModal" tabindex="-1" aria-labelledby="pilotProfileModalLabel" aria-hidden="true" style="z-index: 10050;">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0 rounded-4">
+            <div class="modal-header border-bottom-0 pb-0 pt-4 px-4">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="bg-primary text-white p-2 rounded-3 d-flex align-items-center justify-content-center" style="width: 38px; height: 38px;">
+                        <i class="bi bi-person-badge fs-5"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0 text-dark" id="pilotProfileModalLabel">Pilot Profile</h5>
+                        <span class="badge bg-secondary-subtle text-secondary" id="profileModalBadge" style="font-size: 0.7rem; font-weight: 600;">Optional Details</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body px-4 py-3">
+                <p class="text-muted small mb-3">
+                    Personalize your SkyArt flight planner with your aircraft and pilot details. All fields are completely optional and can be modified anytime from your account menu.
+                </p>
+                <form id="pilotProfileForm">
+                    <div class="mb-3">
+                        <label for="profilePilotNameInput" class="form-label small fw-bold text-muted mb-1">
+                            <i class="bi bi-person-fill me-1 text-primary"></i>Pilot Name / Callsign
+                        </label>
+                        <input type="text" class="form-control" id="profilePilotNameInput" placeholder="e.g. Jim Bob or Capt. Sully" maxlength="120">
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label for="profileTailNumberInput" class="form-label small fw-bold text-muted mb-1">
+                                <i class="bi bi-tag-fill me-1 text-primary"></i>Tail / N-Number
+                            </label>
+                            <input type="text" class="form-control text-uppercase font-monospace" id="profileTailNumberInput" placeholder="e.g. N12345" maxlength="32">
+                        </div>
+                        <div class="col-6 position-relative">
+                            <label for="profileHomeAirportInput" class="form-label small fw-bold text-muted mb-1">
+                                <i class="bi bi-geo-alt-fill me-1 text-danger"></i>Home Airport
+                            </label>
+                            <input type="text" class="form-control text-uppercase font-monospace" id="profileHomeAirportInput" placeholder="e.g. KSQL, KLAX" maxlength="20" autocomplete="off">
+                            <div id="profileHomeSearchResults" class="airport-autocomplete-list d-none shadow-sm" style="position: absolute; top: 100%; left: 0; right: 0; max-height: 180px; overflow-y: auto; z-index: 1060;"></div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="profileAircraftTypeInput" class="form-label small fw-bold text-muted mb-1">
+                            <i class="bi bi-airplane-fill me-1 text-primary"></i>Aircraft Make / Model
+                        </label>
+                        <input type="text" class="form-control" id="profileAircraftTypeInput" placeholder="e.g. Cessna 172 or Skyhawk" maxlength="64">
+                    </div>
+
+                    <div id="profileFormAlert" class="alert alert-danger small py-2 px-3 d-none" role="alert"></div>
+                </form>
+            </div>
+            <div class="modal-footer border-top-0 pt-0 px-4 pb-4 d-flex justify-content-between align-items-center">
+                <button type="button" class="btn btn-outline-secondary btn-sm px-3" data-bs-dismiss="modal" id="profileDismissBtn">
+                    Skip for Now
+                </button>
+                <button type="button" class="btn btn-primary btn-sm px-4 fw-semibold d-flex align-items-center gap-2" id="saveProfileBtn">
+                    <span id="saveProfileBtnText">Save Profile</span>
+                    <span class="spinner-border spinner-border-sm d-none" id="saveProfileSpinner" role="status" aria-hidden="true"></span>
                 </button>
             </div>
         </div>

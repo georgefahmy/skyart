@@ -1,9 +1,11 @@
 import unittest
-from app import app
+from app import app, db
 
 class TestServerIntegrity(unittest.TestCase):
     def setUp(self):
         self.client = app.test_client()
+        with app.app_context():
+            db.create_all()
 
     def test_homepage_loads(self):
         res = self.client.get('/')
@@ -11,6 +13,17 @@ class TestServerIntegrity(unittest.TestCase):
         self.assertIn(b'SkyArt', res.data)
         # Ensure N890GF authoring references are not present in client template
         self.assertNotIn(b'Author: N890GF', res.data)
+
+    def test_robots_txt_loads(self):
+        res = self.client.get('/robots.txt')
+        self.assertEqual(res.status_code, 200)
+        self.assertIn(b'User-agent:', res.data)
+        self.assertIn(b'Disallow: /api/', res.data)
+
+    def test_favicon_loads(self):
+        res = self.client.get('/favicon.ico')
+        self.assertEqual(res.status_code, 200)
+        self.assertIn(b'<svg', res.data)
 
     def test_static_js_contains_sync_fix(self):
         res = self.client.get('/static/js/sky_art.js')
@@ -162,6 +175,12 @@ class TestServerIntegrity(unittest.TestCase):
         uid = f"usr_test_{uuid.uuid4().hex[:8]}"
         art_name = "Golden Gate Star"
         client_ip = "198.51.100.99"
+
+        # Register test user to authenticate session
+        self.client.post("/api/auth/register", json={
+            "email": f"{uid}@example.com",
+            "password": "Password123!"
+        })
 
         with self.assertLogs(app.logger, level='INFO') as cm:
             res_save = self.client.post(

@@ -11,11 +11,14 @@ import re
 import time
 import uuid
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from logging.handlers import RotatingFileHandler
 
-from flask import Flask, jsonify, make_response, render_template, request
+from flask import Flask, jsonify, make_response, render_template, request, session
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import event, text
+from sqlalchemy.engine import Engine
+from werkzeug.security import generate_password_hash, check_password_hash
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
@@ -46,8 +49,25 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
     "DATABASE_URL", f"sqlite:///{db_path}"
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 db = SQLAlchemy(app)
+
+
+# --- SQLite Concurrency & WAL Optimization ---
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    if app.config.get("SQLALCHEMY_DATABASE_URI", "").startswith("sqlite"):
+        try:
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=5000")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.close()
+        except Exception:
+            pass
 
 # --- Server-Side Logging Configuration ---
 LOG_FILE = os.path.join(INSTANCE_DIR, "sky_art.log")
@@ -130,6 +150,92 @@ def sanitize_user_id(uid):
     return None
 
 
+class SkyArtUser(db.Model):
+    __tablename__ = "sky_art_users"
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    email = db.Column(db.String(255), unique=True, index=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    pilot_name = db.Column(db.String(120), nullable=True)
+    tail_number = db.Column(db.String(32), nullable=True)
+    home_airport = db.Column(db.String(20), nullable=True)
+    aircraft_type = db.Column(db.String(64), nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    last_login_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password, method="scrypt")
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "email": self.email,
+            "pilotName": self.pilot_name or "",
+            "tailNumber": self.tail_number or "",
+            "homeAirport": self.home_airport or "",
+            "aircraftType": self.aircraft_type or "",
+            "createdAt": self.created_at.isoformat() if self.created_at else None,
+            "lastLoginAt": self.last_login_at.isoformat() if self.last_login_at else None,
+        }
+
+
+def get_current_user():
+    user_id = session.get("user_id")
+    if not user_id:
+        return None
+    return db.session.get(SkyArtUser, user_id)
+
+
+EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def validate_email_address(email):
+    if not email or not isinstance(email, str):
+        return False, "Email address is required."
+    email = email.strip()
+    if len(email) > 254:
+        return False, "Email address is too long."
+    if not EMAIL_REGEX.match(email):
+        return False, "Please enter a valid email address."
+    return True, email.lower()
+
+
+def validate_password_strength(password):
+    if not password or not isinstance(password, str):
+        return False, "Password is required."
+    if len(password) < 8:
+        return False, "Password must be at least 8 characters long."
+    if not re.search(r"[A-Z]", password):
+        return False, "Password must contain at least one uppercase letter (A-Z)."
+    if not re.search(r"[a-z]", password):
+        return False, "Password must contain at least one lowercase letter (a-z)."
+    if not re.search(r"[0-9]", password):
+        return False, "Password must contain at least one number (0-9)."
+    if not re.search(r"[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>\/?]", password):
+        return False, "Password must contain at least one special character (!@#$%^&* etc.)."
+    return True, None
+
+
+# In-memory sliding window rate limiter
+_rate_limit_records = {}
+
+
+def is_rate_limited(bucket_name, ip_address, max_requests, window_seconds):
+    now = time.time()
+    key = f"{bucket_name}:{ip_address}"
+    timestamps = _rate_limit_records.get(key, [])
+    valid_timestamps = [ts for ts in timestamps if now - ts < window_seconds]
+    if len(valid_timestamps) >= max_requests:
+        _rate_limit_records[key] = valid_timestamps
+        return True
+    valid_timestamps.append(now)
+    _rate_limit_records[key] = valid_timestamps
+    return False
+
+
 def get_or_create_user_id():
     # 1. Custom header from frontend (localStorage sync)
     uid = sanitize_user_id(request.headers.get("X-User-ID"))
@@ -149,9 +255,15 @@ def get_or_create_user_id():
 @app.before_request
 def identify_user_instance():
     request._client_ip = get_client_ip()
-    uid, is_new = get_or_create_user_id()
-    request._skyart_user_id = uid
-    request._skyart_user_id_is_new = is_new
+    user = get_current_user()
+    request._current_user = user
+    if user:
+        request._skyart_user_id = user.id
+        request._skyart_user_id_is_new = False
+    else:
+        uid, is_new = get_or_create_user_id()
+        request._skyart_user_id = uid
+        request._skyart_user_id_is_new = is_new
 
 
 @app.after_request
@@ -322,6 +434,22 @@ with app.app_context():
                     )
                 )
                 conn.commit()
+
+            # Migrate sky_art_users table with profile columns
+            user_cols_res = conn.execute(text("PRAGMA table_info(sky_art_users)")).fetchall()
+            user_cols = [r[1] for r in user_cols_res]
+            if "pilot_name" not in user_cols:
+                conn.execute(text("ALTER TABLE sky_art_users ADD COLUMN pilot_name VARCHAR(120)"))
+                conn.commit()
+            if "tail_number" not in user_cols:
+                conn.execute(text("ALTER TABLE sky_art_users ADD COLUMN tail_number VARCHAR(32)"))
+                conn.commit()
+            if "home_airport" not in user_cols:
+                conn.execute(text("ALTER TABLE sky_art_users ADD COLUMN home_airport VARCHAR(20)"))
+                conn.commit()
+            if "aircraft_type" not in user_cols:
+                conn.execute(text("ALTER TABLE sky_art_users ADD COLUMN aircraft_type VARCHAR(64)"))
+                conn.commit()
     except Exception as e:
         app.logger.warning(f"DB migration check: {e}")
 
@@ -470,14 +598,253 @@ def api_airports_search():
     return jsonify(results)
 
 
+# ==============================================================================
+# Authentication & User Account Endpoints
+# ==============================================================================
+
+@app.route("/api/auth/me", methods=["GET"])
+def api_auth_me():
+    """Retrieve current authenticated user session."""
+    user = getattr(request, "_current_user", None) or get_current_user()
+    if not user:
+        return jsonify({"authenticated": False, "user": None}), 401
+    return jsonify({
+        "authenticated": True,
+        "user": user.to_dict()
+    })
+
+
+@app.route("/api/auth/register", methods=["POST"])
+def api_auth_register():
+    """Register a new user account with email and secure password."""
+    client_ip = get_client_ip()
+    if is_rate_limited("register", client_ip, max_requests=10, window_seconds=3600):
+        return jsonify({
+            "status": "error",
+            "message": "Too many registration attempts from your network. Please try again later."
+        }), 429
+
+    data = request.get_json(silent=True) or {}
+    raw_email = data.get("email")
+    raw_password = data.get("password")
+    remember_me = bool(data.get("rememberMe", True))
+
+    is_valid_email, email_or_err = validate_email_address(raw_email)
+    if not is_valid_email:
+        return jsonify({"status": "error", "message": email_or_err}), 400
+
+    email = email_or_err
+    is_valid_pw, pw_err = validate_password_strength(raw_password)
+    if not is_valid_pw:
+        return jsonify({"status": "error", "message": pw_err}), 400
+
+    existing_user = SkyArtUser.query.filter_by(email=email).first()
+    if existing_user:
+        return jsonify({
+            "status": "error",
+            "message": "An account with this email address already exists. Please sign in."
+        }), 409
+
+    try:
+        user = SkyArtUser(email=email)
+        user.set_password(raw_password)
+        db.session.add(user)
+        db.session.commit()
+
+        session.permanent = remember_me
+        session["user_id"] = user.id
+        request._current_user = user
+        request._skyart_user_id = user.id
+        app.logger.info(f"[AUTH] Registered new account: {user.email} (ID: {user.id}) from IP: {client_ip}")
+
+        return jsonify({
+            "status": "success",
+            "message": "Account created successfully.",
+            "user": user.to_dict()
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"[AUTH] Registration error: {e}")
+        return jsonify({"status": "error", "message": "Could not create account. Please try again."}), 500
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def api_auth_login():
+    """Authenticate an existing user with email and password."""
+    client_ip = get_client_ip()
+    if is_rate_limited("login", client_ip, max_requests=15, window_seconds=60):
+        return jsonify({
+            "status": "error",
+            "message": "Too many login attempts. Please wait a minute and try again."
+        }), 429
+
+    data = request.get_json(silent=True) or {}
+    raw_email = (data.get("email") or "").strip().lower()
+    raw_password = data.get("password") or ""
+    remember_me = bool(data.get("rememberMe", True))
+
+    if not raw_email or not raw_password:
+        return jsonify({"status": "error", "message": "Email and password are required."}), 400
+
+    user = SkyArtUser.query.filter_by(email=raw_email).first()
+    if not user or not user.check_password(raw_password):
+        app.logger.warning(f"[AUTH] Invalid login for '{raw_email}' from IP: {client_ip}")
+        return jsonify({"status": "error", "message": "Invalid email or password."}), 401
+
+    try:
+        user.last_login_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+        session.permanent = remember_me
+        session["user_id"] = user.id
+        request._current_user = user
+        request._skyart_user_id = user.id
+        app.logger.info(f"[AUTH] Logged in: {user.email} (ID: {user.id}) from IP: {client_ip}")
+
+        return jsonify({
+            "status": "success",
+            "message": "Signed in successfully.",
+            "user": user.to_dict()
+        })
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"[AUTH] Login session error: {e}")
+        return jsonify({"status": "error", "message": "Login failed. Please try again."}), 500
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def api_auth_logout():
+    """Log out current user and invalidate session."""
+    user = get_current_user()
+    if user:
+        app.logger.info(f"[AUTH] Logged out: {user.email} (ID: {user.id})")
+    session.clear()
+    return jsonify({"status": "success", "message": "Logged out successfully."})
+
+
+@app.route("/api/user/profile", methods=["GET", "POST", "PUT"])
+def api_user_profile():
+    """Retrieve or update optional pilot profile information."""
+    user = getattr(request, "_current_user", None) or get_current_user()
+    if not user:
+        return jsonify({"status": "error", "message": "Authentication required."}), 401
+
+    if request.method == "GET":
+        return jsonify({"status": "success", "profile": user.to_dict()})
+
+    data = request.get_json(silent=True) or {}
+    pilot_name = (data.get("pilotName") or "").strip()[:120]
+    tail_number = (data.get("tailNumber") or "").strip().upper()[:32]
+    home_airport = (data.get("homeAirport") or "").strip().upper()[:20]
+    aircraft_type = (data.get("aircraftType") or "").strip()[:64]
+
+    try:
+        user.pilot_name = pilot_name or None
+        user.tail_number = tail_number or None
+        user.home_airport = home_airport or None
+        user.aircraft_type = aircraft_type or None
+
+        # Synchronize Home Airport record if home_airport is specified
+        if home_airport:
+            airports = get_airports_summary_list()
+            matched_ap = None
+            for ap in airports:
+                if (
+                    (ap.get("icao") or "").upper() == home_airport
+                    or (ap.get("iata") or "").upper() == home_airport
+                    or (ap.get("faa") or "").upper() == home_airport
+                ):
+                    matched_ap = ap
+                    break
+            if matched_ap:
+                home_rec = db.session.get(SkyArtHomeAirport, user.id)
+                if not home_rec:
+                    home_rec = SkyArtHomeAirport(user_id=user.id)
+                    db.session.add(home_rec)
+                home_rec.icao = (matched_ap.get("icao") or matched_ap.get("faa") or home_airport).upper()
+                home_rec.name = matched_ap.get("name") or home_airport
+                home_rec.lat = float(matched_ap.get("lat") or 0.0)
+                home_rec.lon = float(matched_ap.get("lon") or 0.0)
+
+        db.session.commit()
+        app.logger.info(
+            f"[PROFILE] Updated profile for user {user.email} (Tail: {user.tail_number}, Name: {user.pilot_name})"
+        )
+        return jsonify({
+            "status": "success",
+            "message": "Pilot profile updated successfully.",
+            "user": user.to_dict(),
+        })
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"[PROFILE] Failed to update profile for {user.email}: {e}")
+        return jsonify({"status": "error", "message": "Failed to update profile."}), 500
+
+
+@app.route("/api/sky_art/drawings/migrate", methods=["POST"])
+@app.route("/api/flight_art/drawings/migrate", methods=["POST"])
+def api_migrate_sky_art_drawings():
+    """Migrate client-side localStorage or anonymous drawings into the user's account."""
+    user = getattr(request, "_current_user", None) or get_current_user()
+    if not user:
+        return jsonify({"status": "error", "message": "Authentication required."}), 401
+
+    data = request.get_json(silent=True) or {}
+    local_drawings = data.get("drawings") or []
+    if not isinstance(local_drawings, list):
+        return jsonify({"status": "error", "message": "Invalid drawings payload."}), 400
+
+    imported_count = 0
+    client_ip = getattr(request, "_client_ip", None) or get_client_ip()
+
+    try:
+        for d in local_drawings:
+            d_id = d.get("id")
+            if not d_id:
+                continue
+            existing = db.session.get(SkyArtDrawing, d_id)
+            if not existing:
+                base_points = d.get("basePoints") or []
+                if len(base_points) < 2:
+                    continue
+                new_d = SkyArtDrawing(
+                    id=d_id,
+                    user_id=user.id,
+                    name=d.get("name") or "Imported Drawing",
+                    ip_address=client_ip,
+                    aspect_ratio=float(d.get("aspectRatio") or 1.0),
+                    size_nm=float(d.get("sizeNM") or 12.0),
+                    height_nm=float(d.get("heightNM") or 12.0),
+                    lock_aspect=bool(d.get("lockAspect", True)),
+                    route_reversed=bool(d.get("routeReversed", False)),
+                    point_count=len(base_points),
+                    base_points_json=json.dumps(base_points),
+                    base_contours_json=json.dumps(d.get("baseContours")) if d.get("baseContours") else None
+                )
+                db.session.add(new_d)
+                imported_count += 1
+            elif not existing.user_id or existing.user_id != user.id:
+                existing.user_id = user.id
+                imported_count += 1
+
+        db.session.commit()
+        app.logger.info(f"[MIGRATION] Imported {imported_count} drawings for {user.email}")
+        return jsonify({"status": "success", "importedCount": imported_count})
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"[MIGRATION] Error migrating drawings: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route("/api/sky_art/drawings", methods=["GET"])
 @app.route("/api/flight_art/drawings", methods=["GET"])
 def api_get_sky_art_drawings():
     """Retrieve all saved Sky Art drawings for the current user instance."""
     try:
-        uid = getattr(request, "_skyart_user_id", None)
-        if not uid:
-            return jsonify([])
+        user = getattr(request, "_current_user", None) or get_current_user()
+        if not user:
+            return jsonify({"status": "error", "message": "Authentication required. Please sign in."}), 401
+        uid = user.id
         drawings = (
             SkyArtDrawing.query.filter_by(user_id=uid)
             .order_by(SkyArtDrawing.created_at.desc())
@@ -494,17 +861,18 @@ def api_get_sky_art_drawings():
 def api_save_sky_art_drawing():
     """Save or update a Sky Art drawing for the current user instance."""
     try:
-        uid = getattr(request, "_skyart_user_id", None)
-        if not uid:
+        user = getattr(request, "_current_user", None) or get_current_user()
+        if not user:
             return (
                 jsonify(
                     {
                         "status": "error",
-                        "message": "Missing user instance identification",
+                        "message": "Authentication required. Please sign in.",
                     }
                 ),
-                400,
+                401,
             )
+        uid = user.id
 
         data = request.get_json(silent=True) or {}
         name = (data.get("name") or "").strip()
@@ -561,9 +929,12 @@ def api_save_sky_art_drawing():
 @app.route("/api/sky_art/drawings/<drawing_id>", methods=["DELETE", "POST"])
 @app.route("/api/flight_art/drawings/<drawing_id>", methods=["DELETE", "POST"])
 def api_delete_sky_art_drawing(drawing_id):
-    """Delete a saved Sky Art drawing for the current user instance."""
+    """Delete a saved Sky Art drawing for the current authenticated user."""
     try:
-        uid = getattr(request, "_skyart_user_id", None)
+        user = getattr(request, "_current_user", None) or get_current_user()
+        if not user:
+            return jsonify({"status": "error", "message": "Authentication required."}), 401
+        uid = user.id
         drawing = db.session.get(SkyArtDrawing, drawing_id)
         if drawing:
             if drawing.user_id and drawing.user_id != uid:
@@ -586,9 +957,10 @@ def api_delete_sky_art_drawing(drawing_id):
 @app.route("/api/sky_art/home_airport", methods=["GET"])
 @app.route("/api/flight_art/home_airport", methods=["GET"])
 def api_get_home_airport():
-    """Retrieve the configured Home Airport for the current user instance."""
+    """Retrieve the configured Home Airport for the current user."""
     try:
-        uid = getattr(request, "_skyart_user_id", None)
+        user = getattr(request, "_current_user", None) or get_current_user()
+        uid = user.id if user else getattr(request, "_skyart_user_id", None)
         if not uid:
             return jsonify({"status": "not_found", "airport": None})
         record = db.session.get(SkyArtHomeAirport, uid)
@@ -603,9 +975,10 @@ def api_get_home_airport():
 @app.route("/api/sky_art/home_airport", methods=["POST"])
 @app.route("/api/flight_art/home_airport", methods=["POST"])
 def api_save_home_airport():
-    """Save or update the configured Home Airport for the current user instance."""
+    """Save or update the configured Home Airport for the current user."""
     try:
-        uid = getattr(request, "_skyart_user_id", None)
+        user = getattr(request, "_current_user", None) or get_current_user()
+        uid = user.id if user else getattr(request, "_skyart_user_id", None)
         if not uid:
             return jsonify({"status": "error", "message": "Missing user instance"}), 400
 
@@ -643,6 +1016,9 @@ def api_save_home_airport():
                 updated_at=datetime.now(timezone.utc),
             )
             db.session.add(record)
+
+        if user and hasattr(user, "home_airport"):
+            user.home_airport = icao
 
         db.session.commit()
         return jsonify({"status": "success", "airport": record.to_dict()})
@@ -960,6 +1336,12 @@ def api_sky_art_feedback():
 def favicon():
     """Serves the SkyArt vector favicon."""
     return app.send_static_file("favicon.svg")
+
+
+@app.route("/robots.txt")
+def robots():
+    """Serves standard search engine crawler rules."""
+    return app.send_static_file("robots.txt")
 
 
 if __name__ == "__main__":
