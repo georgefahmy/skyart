@@ -132,6 +132,25 @@
             color: #f8fafc !important;
             border-color: #475569 !important;
         }
+        body.dark-mode #passwordResetModal .modal-content {
+            background: #1e293b;
+            color: #f8fafc;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        }
+        body.dark-mode #passwordResetModal .bg-light {
+            background: #0f172a !important;
+            border-color: rgba(255, 255, 255, 0.1) !important;
+        }
+        body.dark-mode #passwordResetModal .input-group-text {
+            background: #334155 !important;
+            color: #cbd5e1 !important;
+            border-color: #475569 !important;
+        }
+        body.dark-mode #passwordResetModal input.form-control {
+            background: #0f172a !important;
+            color: #f8fafc !important;
+            border-color: #475569 !important;
+        }
         #openAuthModalBtn.d-none {
             display: none !important;
         }
@@ -173,6 +192,11 @@
                     <li>
                         <button class="dropdown-item d-flex align-items-center gap-2 py-1" id="openProfileModalBtn" type="button">
                             <i class="bi bi-person-gear text-primary"></i> Pilot Profile
+                        </button>
+                    </li>
+                    <li>
+                        <button class="dropdown-item d-flex align-items-center gap-2 py-1" id="openChangePasswordModalBtn" type="button">
+                            <i class="bi bi-key-fill text-warning"></i> Change Password
                         </button>
                     </li>
                     <li class="px-2 py-1 d-flex justify-content-between align-items-center">
@@ -1777,6 +1801,7 @@
                     <div class="mb-3">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <label for="authPasswordInput" class="form-label small fw-bold text-muted mb-0">Password</label>
+                            <a href="#" id="forgotPasswordLink" class="small text-decoration-none text-primary fw-semibold" style="font-size: 0.76rem;">Forgot Password?</a>
                         </div>
                         <div class="input-group">
                             <span class="input-group-text bg-light text-muted"><i class="bi bi-lock"></i></span>
@@ -1886,6 +1911,121 @@
     </div>
 </div>
 
+<!-- Modal: Change / Reset Password (Email Verification Code Flow) -->
+<div class="modal fade" id="passwordResetModal" tabindex="-1" aria-labelledby="passwordResetModalLabel" aria-hidden="true" style="z-index: 10060;">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0 rounded-4">
+            <div class="modal-header border-bottom-0 pb-0 pt-4 px-4">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="bg-warning text-dark p-2 rounded-3 d-flex align-items-center justify-content-center" style="width: 38px; height: 38px;">
+                        <i class="bi bi-shield-lock-fill fs-5"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0 text-dark" id="passwordResetModalLabel">Change Password</h5>
+                        <span class="badge bg-secondary-subtle text-secondary" id="passwordResetModalBadge" style="font-size: 0.7rem; font-weight: 600;">Email Verification</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body px-4 py-3">
+                <div id="pwdModalAlert" class="alert alert-danger small py-2 px-3 d-none mb-3" role="alert"></div>
+                <div id="pwdModalSuccess" class="alert alert-success small py-2 px-3 d-none mb-3" role="alert"></div>
+
+                <!-- STEP 1: Request Code Form -->
+                <div id="pwdStep1Container">
+                    <p class="text-muted small mb-3" id="pwdStep1Description">
+                        For your security, we will send a 6-digit verification code to your registered email address before updating your password.
+                    </p>
+
+                    <!-- Current Password (shown if user is logged in) -->
+                    <div class="mb-3" id="pwdCurrentPasswordGroup">
+                        <label for="pwdCurrentPasswordInput" class="form-label small fw-bold text-muted mb-1">
+                            <i class="bi bi-lock-fill me-1 text-warning"></i>Current Password
+                        </label>
+                        <input type="password" class="form-control" id="pwdCurrentPasswordInput" placeholder="Enter current password" autocomplete="current-password">
+                    </div>
+
+                    <!-- Email Input (shown if user is logged out / forgot password) -->
+                    <div class="mb-3 d-none" id="pwdEmailGroup">
+                        <label for="pwdEmailInput" class="form-label small fw-bold text-muted mb-1">
+                            <i class="bi bi-envelope-fill me-1 text-primary"></i>Your Account Email
+                        </label>
+                        <input type="email" class="form-control" id="pwdEmailInput" placeholder="pilot@example.com" autocomplete="email">
+                    </div>
+
+                    <button type="button" class="btn btn-primary w-100 py-2 fw-semibold d-flex align-items-center justify-content-center gap-2" id="pwdRequestCodeBtn">
+                        <span id="pwdRequestCodeBtnText"><i class="bi bi-send me-1"></i> Send Verification Code</span>
+                        <span class="spinner-border spinner-border-sm d-none" id="pwdRequestCodeSpinner" role="status" aria-hidden="true"></span>
+                    </button>
+                </div>
+
+                <!-- STEP 2: Verify Code & Set New Password -->
+                <div id="pwdStep2Container" class="d-none">
+                    <p class="text-muted small mb-3">
+                        A 6-digit security code was sent to <strong id="pwdTargetEmailDisplay" class="text-primary">-</strong>. Enter the code and your new password below:
+                    </p>
+
+                    <!-- 6-Digit OTP Code -->
+                    <div class="mb-3">
+                        <label for="pwdCodeInput" class="form-label small fw-bold text-muted mb-1">
+                            <i class="bi bi-key-fill me-1 text-warning"></i>6-Digit Verification Code
+                        </label>
+                        <input type="text" class="form-control text-center font-monospace fw-bold fs-4 py-2" id="pwdCodeInput" maxlength="6" placeholder="000000" style="letter-spacing: 6px;" autocomplete="one-time-code">
+                        <div class="d-flex justify-content-between align-items-center mt-1">
+                            <span class="text-muted" style="font-size: 0.72rem;"><i class="bi bi-clock me-1"></i>Expires in 15 minutes</span>
+                            <button type="button" class="btn btn-link p-0 text-decoration-none small" id="pwdResendCodeBtn" style="font-size: 0.75rem;">
+                                Resend Code <span id="pwdResendCountdown" class="text-muted"></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- New Password -->
+                    <div class="mb-3">
+                        <label for="pwdNewPasswordInput" class="form-label small fw-bold text-muted mb-1">
+                            <i class="bi bi-shield-check me-1 text-primary"></i>New Password
+                        </label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="pwdNewPasswordInput" placeholder="New secure password" autocomplete="new-password">
+                            <button class="btn btn-outline-secondary" type="button" id="toggleNewPasswordVisibilityBtn" title="Show/Hide Password">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- New Password Requirements Checklist -->
+                    <div id="pwdNewRequirements" class="p-2 rounded bg-light border mb-3 small" style="font-size: 0.72rem;">
+                        <div class="fw-bold text-muted mb-1">Password Requirements:</div>
+                        <div id="newPwReqLen" class="text-danger"><i class="bi bi-x-circle me-1"></i>At least 8 characters</div>
+                        <div id="newPwReqUpper" class="text-danger"><i class="bi bi-x-circle me-1"></i>At least 1 uppercase letter (A-Z)</div>
+                        <div id="newPwReqLower" class="text-danger"><i class="bi bi-x-circle me-1"></i>At least 1 lowercase letter (a-z)</div>
+                        <div id="newPwReqNum" class="text-danger"><i class="bi bi-x-circle me-1"></i>At least 1 number (0-9)</div>
+                        <div id="newPwReqSpecial" class="text-danger"><i class="bi bi-x-circle me-1"></i>At least 1 special character (!@#$%^&* etc.)</div>
+                    </div>
+
+                    <!-- Confirm New Password -->
+                    <div class="mb-3">
+                        <label for="pwdConfirmPasswordInput" class="form-label small fw-bold text-muted mb-1">
+                            <i class="bi bi-check-circle me-1 text-primary"></i>Confirm New Password
+                        </label>
+                        <input type="password" class="form-control" id="pwdConfirmPasswordInput" placeholder="Confirm new password" autocomplete="new-password">
+                        <div class="form-text text-danger small d-none" id="pwdMismatchAlert">Passwords do not match.</div>
+                    </div>
+
+                    <button type="button" class="btn btn-success w-100 py-2 fw-semibold d-flex align-items-center justify-content-center gap-2" id="pwdSubmitNewPasswordBtn">
+                        <span id="pwdSubmitBtnText"><i class="bi bi-check2-circle me-1"></i> Update Password</span>
+                        <span class="spinner-border spinner-border-sm d-none" id="pwdSubmitSpinner" role="status" aria-hidden="true"></span>
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer border-top-0 pt-0 px-4 pb-4">
+                <button type="button" class="btn btn-outline-secondary btn-sm px-3" data-bs-dismiss="modal">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1951,7 +2091,7 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 </script>
 
-<script src="/static/js/sky_art.js?v=2.1.1"></script>
+<script src="/static/js/sky_art.js?v=2.2.0"></script>
 
 </body>
 </html>

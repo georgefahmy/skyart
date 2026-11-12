@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import time
 import uuid
 import urllib.parse
@@ -180,6 +181,32 @@ class SkyArtUser(db.Model):
             "createdAt": self.created_at.isoformat() if self.created_at else None,
             "lastLoginAt": self.last_login_at.isoformat() if self.last_login_at else None,
         }
+
+
+class SkyArtPasswordResetToken(db.Model):
+    __tablename__ = "sky_art_password_reset_tokens"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.String(36), db.ForeignKey("sky_art_users.id"), index=True, nullable=False)
+    code_hash = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used = db.Column(db.Boolean, default=False)
+    attempts = db.Column(db.Integer, default=0)
+    ip_address = db.Column(db.String(50), nullable=True)
+
+    def set_code(self, raw_code):
+        self.code_hash = generate_password_hash(raw_code, method="scrypt")
+
+    def check_code(self, raw_code):
+        return check_password_hash(self.code_hash, raw_code)
+
+    def is_valid(self):
+        now = datetime.now(timezone.utc)
+        exp = self.expires_at
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        return (not self.used) and (self.attempts < 5) and (now < exp)
 
 
 def get_current_user():
@@ -732,6 +759,268 @@ def api_auth_logout():
         app.logger.info(f"[AUTH] Logged out: {user.email} (ID: {user.id}) from IP: {client_ip}")
     session.clear()
     return jsonify({"status": "success", "message": "Logged out successfully."})
+
+
+def send_email_via_smtp(recipient_email, subject, text_content, html_content=None):
+    """Dispatch an email using configured SMTP credentials."""
+    smtp_user = os.environ.get("SMTP_USER")
+    smtp_pass = os.environ.get("SMTP_PASSWORD")
+    smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.environ.get("SMTP_PORT", 587))
+
+    if not (smtp_user and smtp_pass):
+        app.logger.warning(
+            f"[EMAIL] SMTP not configured. Could not send '{subject}' to {recipient_email}"
+        )
+        return False, "SMTP credentials not configured"
+
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+
+        msg = MIMEMultipart("alternative")
+        msg["From"] = f"SkyArt Flight Planner <{smtp_user}>"
+        msg["To"] = recipient_email
+        msg["Subject"] = subject
+
+        part1 = MIMEText(text_content, "plain", "utf-8")
+        msg.attach(part1)
+
+        if html_content:
+            part2 = MIMEText(html_content, "html", "utf-8")
+            msg.attach(part2)
+
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.send_message(msg)
+
+        app.logger.info(f"[EMAIL] Successfully sent '{subject}' to {recipient_email}")
+        return True, "Email sent successfully"
+    except Exception as e:
+        app.logger.error(f"[EMAIL] Failed to send email to {recipient_email}: {e}")
+        return False, str(e)
+
+
+def send_password_verification_code_email(recipient_email, code, pilot_name=None):
+    """Send a 6-digit verification code email for password update or recovery."""
+    greeting = f"Hello {pilot_name}," if pilot_name else "Hello Pilot,"
+    subject = f"SkyArt Security Code: {code}"
+
+    text_content = f"""SkyArt Flight Planner - Password Verification Code
+
+{greeting}
+
+A request was received to update or reset your SkyArt account password. Use the verification code below to authorize this change:
+
+Verification Code: {code}
+
+This code will expire in 15 minutes.
+If you did not request this change, you can safely ignore this email. Your current password remains secure.
+
+SkyArt GPS Flight Art & ForeFlight Flight Plan Generator
+https://skyart.n890gf.com
+"""
+
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; padding: 24px; margin: 0; }}
+    .card {{ max-width: 500px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 32px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }}
+    .header {{ text-align: center; margin-bottom: 24px; }}
+    .logo {{ font-size: 22px; font-weight: bold; color: #0284c7; }}
+    .code-box {{ background: #f1f5f9; border: 2px dashed #0284c7; border-radius: 8px; font-size: 34px; font-weight: bold; letter-spacing: 8px; text-align: center; padding: 18px; margin: 24px 0; font-family: monospace; color: #0f172a; }}
+    .footer {{ font-size: 12px; color: #64748b; margin-top: 24px; text-align: center; line-height: 1.5; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="logo">✈️ SkyArt Flight Planner</div>
+      <h2 style="margin: 8px 0 0 0; font-size: 19px; color: #0f172a;">Password Verification Code</h2>
+    </div>
+    <p>{greeting}</p>
+    <p>A request was received to update or reset your SkyArt account password. Use the verification code below to authorize this change:</p>
+    <div class="code-box">{code}</div>
+    <p style="font-size: 14px; color: #475569; line-height: 1.5;">
+      ⏱️ This code will expire in <strong>15 minutes</strong>.<br>
+      🔒 If you did not request this change, you can safely ignore this email. Your current password remains secure.
+    </p>
+    <div class="footer">
+      SkyArt GPS Flight Art &amp; ForeFlight Flight Plan Generator<br>
+      <a href="https://skyart.n890gf.com" style="color: #0284c7; text-decoration: none;">skyart.n890gf.com</a>
+    </div>
+  </div>
+</body>
+</html>"""
+
+    return send_email_via_smtp(recipient_email, subject, text_content, html_content)
+
+
+@app.route("/api/auth/password-reset/request", methods=["POST"])
+def api_auth_password_reset_request():
+    """Request a 6-digit email verification code for password change or recovery."""
+    client_ip = get_client_ip()
+    if is_rate_limited("pwd_reset_req", client_ip, max_requests=10, window_seconds=900):
+        return jsonify({
+            "status": "error",
+            "message": "Too many requests. Please wait a few minutes before requesting another code."
+        }), 429
+
+    data = request.get_json(silent=True) or {}
+    req_email = (data.get("email") or "").strip().lower()
+
+    # If logged in and email not specified, use current user
+    user = getattr(request, "_current_user", None) or get_current_user()
+    if user and not req_email:
+        req_email = user.email.lower()
+
+    if not req_email:
+        return jsonify({"status": "error", "message": "Email address is required."}), 400
+
+    target_user = SkyArtUser.query.filter_by(email=req_email).first()
+
+    debug_code = None
+    if target_user:
+        # Invalidate any existing active tokens for this user
+        SkyArtPasswordResetToken.query.filter_by(user_id=target_user.id, used=False).update({"used": True})
+
+        # Generate cryptographically secure 6-digit code
+        raw_code = f"{secrets.randbelow(900000) + 100000:06d}"
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+
+        token = SkyArtPasswordResetToken(
+            user_id=target_user.id,
+            expires_at=expires_at,
+            ip_address=client_ip
+        )
+        token.set_code(raw_code)
+        db.session.add(token)
+        db.session.commit()
+
+        # Send email
+        sent, err_msg = send_password_verification_code_email(
+            target_user.email, raw_code, pilot_name=target_user.pilot_name
+        )
+        app.logger.info(
+            f"[AUTH] Password verification code dispatched for {target_user.email} from IP: {client_ip} (Email status: {sent})"
+        )
+
+        if app.config.get("TESTING") or os.environ.get("SKYART_DEV_EXPOSE_OTP") == "1":
+            debug_code = raw_code
+    else:
+        app.logger.info(
+            f"[AUTH] Password verification code requested for non-existent email '{req_email}' from IP: {client_ip}"
+        )
+
+    resp = {
+        "status": "success",
+        "message": "If an account matches that email, a 6-digit verification code has been sent."
+    }
+    if debug_code:
+        resp["debug_code"] = debug_code
+    return jsonify(resp)
+
+
+@app.route("/api/auth/password-reset/verify", methods=["POST"])
+def api_auth_password_reset_verify():
+    """Verify 6-digit email code and update password."""
+    client_ip = get_client_ip()
+    if is_rate_limited("pwd_reset_verify", client_ip, max_requests=15, window_seconds=900):
+        return jsonify({
+            "status": "error",
+            "message": "Too many attempts. Please wait a few minutes before trying again."
+        }), 429
+
+    data = request.get_json(silent=True) or {}
+    raw_code = str(data.get("code") or "").strip()
+    new_password = str(data.get("new_password") or "")
+    current_password = str(data.get("current_password") or "")
+    req_email = (data.get("email") or "").strip().lower()
+
+    if not raw_code:
+        return jsonify({"status": "error", "message": "Verification code is required."}), 400
+
+    # Validate new password strength against all 5 rules
+    is_valid_pw, pw_err = validate_password_strength(new_password)
+    if not is_valid_pw:
+        return jsonify({"status": "error", "message": pw_err}), 400
+
+    user = getattr(request, "_current_user", None) or get_current_user()
+
+    # If logged in: verify current password
+    if user:
+        if not current_password:
+            return jsonify({"status": "error", "message": "Current password is required."}), 400
+        if not user.check_password(current_password):
+            app.logger.warning(
+                f"[AUTH] Password change failed for {user.email}: incorrect current password from IP: {client_ip}"
+            )
+            return jsonify({"status": "error", "message": "Incorrect current password."}), 400
+    else:
+        # Not logged in: locate user by email
+        if not req_email:
+            return jsonify({"status": "error", "message": "Email address is required."}), 400
+        user = SkyArtUser.query.filter_by(email=req_email).first()
+        if not user:
+            return jsonify({"status": "error", "message": "Invalid code or email address."}), 400
+
+    # Look up latest unused token
+    token = SkyArtPasswordResetToken.query.filter_by(
+        user_id=user.id, used=False
+    ).order_by(SkyArtPasswordResetToken.created_at.desc()).first()
+
+    if not token or not token.is_valid():
+        return jsonify({
+            "status": "error",
+            "message": "Verification code is invalid or has expired. Please request a new code."
+        }), 400
+
+    # Check brute-force attempts
+    token.attempts += 1
+    if not token.check_code(raw_code):
+        db.session.commit()
+        remaining = max(0, 5 - token.attempts)
+        app.logger.warning(
+            f"[AUTH] Invalid password code attempt for {user.email} from IP: {client_ip} ({remaining} attempts remaining)"
+        )
+        if remaining == 0:
+            token.used = True
+            db.session.commit()
+            return jsonify({
+                "status": "error",
+                "message": "Too many incorrect attempts. This code has been invalidated. Please request a new code."
+            }), 400
+        return jsonify({
+            "status": "error",
+            "message": f"Incorrect verification code ({remaining} attempts remaining)."
+        }), 400
+
+    # Success: update password and invalidate token
+    try:
+        user.set_password(new_password)
+        token.used = True
+        user.last_login_at = datetime.now(timezone.utc)
+        session["user_id"] = user.id
+        request._current_user = user
+        request._skyart_user_id = user.id
+        db.session.commit()
+
+        app.logger.info(
+            f"[AUTH] Password successfully updated for {user.email} from IP: {client_ip}"
+        )
+        return jsonify({
+            "status": "success",
+            "message": "Your password has been changed successfully.",
+            "user": user.to_dict()
+        })
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"[AUTH] Password update error for {user.email}: {e}")
+        return jsonify({"status": "error", "message": "Could not update password. Please try again."}), 500
 
 
 @app.route("/api/user/profile", methods=["GET", "POST", "PUT"])

@@ -39,8 +39,16 @@ function createEnvironment() {
                 addEventListener(ev, fn) {
                     this['on_' + ev] = fn;
                 },
+                dispatchEvent(ev, data = {}) {
+                    const evName = typeof ev === 'string' ? ev : (ev.type || 'click');
+                    if (typeof this['on_' + evName] === 'function') {
+                        this['on_' + evName]({ preventDefault() {}, target: this, ...data });
+                    }
+                },
                 querySelectorAll() { return []; },
-                closest() { return null; }
+                closest() { return null; },
+                focus() {},
+                blur() {}
             };
         }
         return domElements[id];
@@ -229,5 +237,44 @@ assert.strictEqual(getOrCreateElement('profileDismissBtn').innerText, "Cancel", 
 assert.strictEqual(getOrCreateElement('profileModalBadge').innerText, "Edit Details", "Navbar opened badge must be 'Edit Details'");
 
 console.log("✅ Test 5 Passed: Pilot profile successfully populates navbar and modal form.");
+
+// Test 6: Password Reset & Change UI Modal interactions
+console.log("\n👉 Test 6: Password Reset & Change UI setup and modal toggles...");
+mockWindow.setupPasswordResetUI();
+
+const changePwBtn = getOrCreateElement('openChangePasswordModalBtn');
+const forgotPwLink = getOrCreateElement('forgotPasswordLink');
+const currPwGroup = getOrCreateElement('pwdCurrentPasswordGroup');
+const emailGroup = getOrCreateElement('pwdEmailGroup');
+const modalTitle = getOrCreateElement('passwordResetModalLabel');
+
+// Clicking "Change Password" (logged in)
+changePwBtn.dispatchEvent('click');
+assert.strictEqual(modalTitle.innerText, "Change Password", "Title must be Change Password when opened from menu");
+assert.strictEqual(currPwGroup.classList.contains('d-none'), false, "Current password input must be visible when logged in");
+assert.strictEqual(emailGroup.classList.contains('d-none'), true, "Email input must be hidden when logged in");
+
+// Clicking "Forgot Password" (logged out recovery)
+forgotPwLink.dispatchEvent('click');
+assert.strictEqual(modalTitle.innerText, "Reset Password", "Title must be Reset Password when clicked forgot password");
+assert.strictEqual(currPwGroup.classList.contains('d-none'), true, "Current password input must be hidden for forgot password");
+assert.strictEqual(emailGroup.classList.contains('d-none'), false, "Email input must be visible for forgot password");
+
+// Password mismatch check
+const newPwInput = getOrCreateElement('pwdNewPasswordInput');
+const confirmPwInput = getOrCreateElement('pwdConfirmPasswordInput');
+const mismatchAlert = getOrCreateElement('pwdMismatchAlert');
+
+newPwInput.value = "ComplexPass123!";
+newPwInput.dispatchEvent('input');
+confirmPwInput.value = "DifferentPass456!";
+confirmPwInput.dispatchEvent('input');
+assert.strictEqual(mismatchAlert.classList.contains('d-none'), false, "Mismatch alert must show when passwords differ");
+
+confirmPwInput.value = "ComplexPass123!";
+confirmPwInput.dispatchEvent('input');
+assert.strictEqual(mismatchAlert.classList.contains('d-none'), true, "Mismatch alert must hide when passwords match");
+
+console.log("✅ Test 6 Passed: Password Reset and Change UI toggles between Logged-In and Forgot modes with live validation.");
 
 console.log("\n🎉 All Frontend Authentication & Profile UI tests PASSED successfully!\n");

@@ -7286,6 +7286,340 @@
         });
     }
 
+    // --- Password Reset & Change Password Flow ---
+    function setupPasswordResetUI() {
+        const modalEl = document.getElementById('passwordResetModal');
+        const openChangePwBtn = document.getElementById('openChangePasswordModalBtn');
+        const forgotPwLink = document.getElementById('forgotPasswordLink');
+
+        const step1 = document.getElementById('pwdStep1Container');
+        const step2 = document.getElementById('pwdStep2Container');
+        const modalTitle = document.getElementById('passwordResetModalLabel');
+        const modalBadge = document.getElementById('passwordResetModalBadge');
+        const step1Desc = document.getElementById('pwdStep1Description');
+
+        const currPwGroup = document.getElementById('pwdCurrentPasswordGroup');
+        const emailGroup = document.getElementById('pwdEmailGroup');
+        const currPwInput = document.getElementById('pwdCurrentPasswordInput');
+        const emailInput = document.getElementById('pwdEmailInput');
+
+        const reqCodeBtn = document.getElementById('pwdRequestCodeBtn');
+        const reqCodeBtnText = document.getElementById('pwdRequestCodeBtnText');
+        const reqCodeSpinner = document.getElementById('pwdRequestCodeSpinner');
+
+        const alertBanner = document.getElementById('pwdModalAlert');
+        const successBanner = document.getElementById('pwdModalSuccess');
+
+        const targetEmailDisplay = document.getElementById('pwdTargetEmailDisplay');
+        const codeInput = document.getElementById('pwdCodeInput');
+        const newPwInput = document.getElementById('pwdNewPasswordInput');
+        const confirmPwInput = document.getElementById('pwdConfirmPasswordInput');
+        const mismatchAlert = document.getElementById('pwdMismatchAlert');
+        const toggleNewPwBtn = document.getElementById('toggleNewPasswordVisibilityBtn');
+
+        const submitBtn = document.getElementById('pwdSubmitNewPasswordBtn');
+        const submitBtnText = document.getElementById('pwdSubmitBtnText');
+        const submitSpinner = document.getElementById('pwdSubmitSpinner');
+        const resendBtn = document.getElementById('pwdResendCodeBtn');
+        const resendCountdown = document.getElementById('pwdResendCountdown');
+
+        let isForgotMode = false;
+        let activeTargetEmail = '';
+        let resendTimer = null;
+
+        function updateNewPasswordRequirements(rules) {
+            function updateItem(elId, passed, text) {
+                const el = document.getElementById(elId);
+                if (!el) return;
+                el.className = passed ? 'text-success' : 'text-danger';
+                el.innerHTML = passed
+                    ? `<i class="bi bi-check-circle-fill me-1"></i>${text}`
+                    : `<i class="bi bi-x-circle me-1"></i>${text}`;
+            }
+            updateItem('newPwReqLen', rules.len, 'At least 8 characters');
+            updateItem('newPwReqUpper', rules.upper, 'At least 1 uppercase letter (A-Z)');
+            updateItem('newPwReqLower', rules.lower, 'At least 1 lowercase letter (a-z)');
+            updateItem('newPwReqNum', rules.num, 'At least 1 number (0-9)');
+            updateItem('newPwReqSpecial', rules.special, 'At least 1 special character (!@#$%^&* etc.)');
+        }
+
+        function openModal(forgotMode) {
+            isForgotMode = forgotMode;
+            if (alertBanner) alertBanner.classList.add('d-none');
+            if (successBanner) successBanner.classList.add('d-none');
+            if (mismatchAlert) mismatchAlert.classList.add('d-none');
+
+            // Reset inputs
+            if (currPwInput) currPwInput.value = '';
+            if (codeInput) codeInput.value = '';
+            if (newPwInput) newPwInput.value = '';
+            if (confirmPwInput) confirmPwInput.value = '';
+            if (submitBtn) submitBtn.classList.remove('d-none');
+
+            // Show Step 1, hide Step 2
+            if (step1) step1.classList.remove('d-none');
+            if (step2) step2.classList.add('d-none');
+
+            if (isForgotMode) {
+                if (modalTitle) modalTitle.innerText = 'Reset Password';
+                if (modalBadge) modalBadge.innerText = 'Account Recovery';
+                if (step1Desc) step1Desc.innerText = 'Enter your registered email address. We will send you a 6-digit verification code to reset your password.';
+                if (currPwGroup) currPwGroup.classList.add('d-none');
+                if (emailGroup) emailGroup.classList.remove('d-none');
+                if (emailInput) {
+                    const authEmail = document.getElementById('authEmailInput')?.value || '';
+                    emailInput.value = authEmail;
+                    setTimeout(() => emailInput.focus(), 300);
+                }
+            } else {
+                if (modalTitle) modalTitle.innerText = 'Change Password';
+                if (modalBadge) modalBadge.innerText = 'Email Verification';
+                if (step1Desc) step1Desc.innerText = 'Enter your current password to authorize. We will send a 6-digit security code to your registered email address.';
+                if (currPwGroup) currPwGroup.classList.remove('d-none');
+                if (emailGroup) emailGroup.classList.add('d-none');
+                setTimeout(() => currPwInput?.focus(), 300);
+            }
+
+            if (modalEl && typeof bootstrap !== 'undefined') {
+                const bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                bsModal.show();
+            }
+        }
+
+        openChangePwBtn?.addEventListener('click', (e) => {
+            e.preventDefault();
+            openModal(false);
+        });
+
+        forgotPwLink?.addEventListener('click', (e) => {
+            e.preventDefault();
+            openModal(true);
+        });
+
+        toggleNewPwBtn?.addEventListener('click', () => {
+            if (!newPwInput) return;
+            const isPassword = newPwInput.type === 'password';
+            newPwInput.type = isPassword ? 'text' : 'password';
+            toggleNewPwBtn.innerHTML = isPassword ? '<i class="bi bi-eye-slash"></i>' : '<i class="bi bi-eye"></i>';
+        });
+
+        if (newPwInput) {
+            newPwInput.addEventListener('input', () => {
+                const rules = checkPasswordRules(newPwInput.value);
+                updateNewPasswordRequirements(rules);
+                if (confirmPwInput && confirmPwInput.value) {
+                    if (confirmPwInput.value !== newPwInput.value) {
+                        mismatchAlert?.classList.remove('d-none');
+                    } else {
+                        mismatchAlert?.classList.add('d-none');
+                    }
+                }
+            });
+        }
+
+        if (confirmPwInput) {
+            confirmPwInput.addEventListener('input', () => {
+                if (newPwInput && confirmPwInput.value !== newPwInput.value) {
+                    mismatchAlert?.classList.remove('d-none');
+                } else {
+                    mismatchAlert?.classList.add('d-none');
+                }
+            });
+        }
+
+        function startResendCountdown(seconds = 60) {
+            if (!resendBtn || !resendCountdown) return;
+            resendBtn.disabled = true;
+            let remaining = seconds;
+            resendCountdown.innerText = `(${remaining}s)`;
+            clearInterval(resendTimer);
+            resendTimer = setInterval(() => {
+                remaining -= 1;
+                if (remaining <= 0) {
+                    clearInterval(resendTimer);
+                    resendBtn.disabled = false;
+                    resendCountdown.innerText = '';
+                } else {
+                    resendCountdown.innerText = `(${remaining}s)`;
+                }
+            }, 1000);
+        }
+
+        // STEP 1 Request Code Click Handler
+        reqCodeBtn?.addEventListener('click', async () => {
+            if (alertBanner) alertBanner.classList.add('d-none');
+            if (successBanner) successBanner.classList.add('d-none');
+
+            let emailToSend = '';
+            if (isForgotMode) {
+                emailToSend = (emailInput?.value || '').trim();
+                if (!emailToSend || !emailToSend.includes('@')) {
+                    if (alertBanner) {
+                        alertBanner.innerText = 'Please enter a valid email address.';
+                        alertBanner.classList.remove('d-none');
+                    }
+                    emailInput?.focus();
+                    return;
+                }
+            } else {
+                const currentPw = currPwInput?.value || '';
+                if (!currentPw) {
+                    if (alertBanner) {
+                        alertBanner.innerText = 'Please enter your current password.';
+                        alertBanner.classList.remove('d-none');
+                    }
+                    currPwInput?.focus();
+                    return;
+                }
+                emailToSend = currentAuthenticatedUser?.email || '';
+            }
+
+            activeTargetEmail = emailToSend;
+
+            // Submit request to server
+            if (reqCodeBtn) reqCodeBtn.disabled = true;
+            if (reqCodeSpinner) reqCodeSpinner.classList.remove('d-none');
+
+            try {
+                const res = await fetch('/api/auth/password-reset/request', {
+                    method: 'POST',
+                    headers: getApiHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify({ email: emailToSend })
+                });
+                const data = await res.json().catch(() => ({}));
+
+                if (res.ok) {
+                    if (targetEmailDisplay) targetEmailDisplay.innerText = emailToSend || 'your email';
+                    if (step1) step1.classList.add('d-none');
+                    if (step2) step2.classList.remove('d-none');
+                    if (codeInput) {
+                        codeInput.value = '';
+                        setTimeout(() => codeInput.focus(), 200);
+                    }
+                    startResendCountdown(60);
+                } else {
+                    if (alertBanner) {
+                        alertBanner.innerText = data.message || 'Could not send verification code. Please try again.';
+                        alertBanner.classList.remove('d-none');
+                    }
+                }
+            } catch (err) {
+                if (alertBanner) {
+                    alertBanner.innerText = 'Network error. Please try again.';
+                    alertBanner.classList.remove('d-none');
+                }
+            } finally {
+                if (reqCodeBtn) reqCodeBtn.disabled = false;
+                if (reqCodeSpinner) reqCodeSpinner.classList.add('d-none');
+            }
+        });
+
+        // Resend Code Click Handler
+        resendBtn?.addEventListener('click', async () => {
+            if (resendBtn.disabled) return;
+            if (alertBanner) alertBanner.classList.add('d-none');
+
+            try {
+                const res = await fetch('/api/auth/password-reset/request', {
+                    method: 'POST',
+                    headers: getApiHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify({ email: activeTargetEmail })
+                });
+                if (res.ok) {
+                    startResendCountdown(60);
+                }
+            } catch (e) {}
+        });
+
+        // STEP 2 Submit New Password
+        submitBtn?.addEventListener('click', async () => {
+            if (alertBanner) alertBanner.classList.add('d-none');
+            if (successBanner) successBanner.classList.add('d-none');
+
+            const code = (codeInput?.value || '').trim();
+            const newPassword = newPwInput?.value || '';
+            const confirmPassword = confirmPwInput?.value || '';
+            const currentPassword = currPwInput?.value || '';
+
+            if (!code || code.length < 6) {
+                if (alertBanner) {
+                    alertBanner.innerText = 'Please enter the complete 6-digit verification code.';
+                    alertBanner.classList.remove('d-none');
+                }
+                codeInput?.focus();
+                return;
+            }
+
+            const rules = checkPasswordRules(newPassword);
+            if (!rules.len || !rules.upper || !rules.lower || !rules.num || !rules.special) {
+                if (alertBanner) {
+                    alertBanner.innerText = 'New password does not meet all complexity requirements.';
+                    alertBanner.classList.remove('d-none');
+                }
+                newPwInput?.focus();
+                return;
+            }
+
+            if (newPassword !== confirmPassword) {
+                if (mismatchAlert) mismatchAlert.classList.remove('d-none');
+                confirmPwInput?.focus();
+                return;
+            }
+
+            if (submitBtn) submitBtn.disabled = true;
+            if (submitSpinner) submitSpinner.classList.remove('d-none');
+
+            try {
+                const payload = {
+                    code,
+                    new_password: newPassword,
+                    current_password: currentPassword,
+                    email: activeTargetEmail
+                };
+
+                const res = await fetch('/api/auth/password-reset/verify', {
+                    method: 'POST',
+                    headers: getApiHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json().catch(() => ({}));
+
+                if (res.ok) {
+                    if (successBanner) {
+                        successBanner.innerText = data.message || 'Password changed successfully!';
+                        successBanner.classList.remove('d-none');
+                    }
+                    if (submitBtn) submitBtn.classList.add('d-none');
+
+                    // If user was updated and returned, sync user state
+                    if (data.user) {
+                        onAuthSuccess(data.user, false);
+                    }
+
+                    setTimeout(() => {
+                        if (modalEl && typeof bootstrap !== 'undefined') {
+                            const bsModal = bootstrap.Modal.getInstance(modalEl);
+                            if (bsModal) bsModal.hide();
+                        }
+                    }, 1500);
+                } else {
+                    if (alertBanner) {
+                        alertBanner.innerText = data.message || 'Password update failed. Please check the code and try again.';
+                        alertBanner.classList.remove('d-none');
+                    }
+                }
+            } catch (err) {
+                if (alertBanner) {
+                    alertBanner.innerText = 'Network error updating password. Please try again.';
+                    alertBanner.classList.remove('d-none');
+                }
+            } finally {
+                if (submitBtn) submitBtn.disabled = false;
+                if (submitSpinner) submitSpinner.classList.add('d-none');
+            }
+        });
+    }
+
     // --- DOM Ready ---
     document.addEventListener('DOMContentLoaded', function () {
         initMap();
@@ -7293,6 +7627,7 @@
         bindUiControls();
         setupAuthUI();
         setupProfileUI();
+        setupPasswordResetUI();
         setupFeedbackForm();
         updateCenterInputs();
         updateHomeAirportUI();
@@ -7312,6 +7647,7 @@
     window.showPilotProfileModal = showPilotProfileModal;
     window.populateProfileModal = populateProfileModal;
     window.setupProfileUI = setupProfileUI;
+    window.setupPasswordResetUI = setupPasswordResetUI;
     window.generateForeFlightRouteString = generateForeFlightRouteString;
     window.generateGarminFplXml = generateGarminFplXml;
     window.generateForeFlightMobileUrl = generateForeFlightMobileUrl;

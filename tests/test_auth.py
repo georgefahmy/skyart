@@ -7,7 +7,7 @@ password validation, session persistence, drawing isolation, and rate limiting.
 import json
 import os
 import unittest
-from app import app, db, SkyArtUser, SkyArtDrawing, _rate_limit_records
+from app import app, db, SkyArtUser, SkyArtDrawing, SkyArtPasswordResetToken, _rate_limit_records
 
 
 class SkyArtAuthTestCase(unittest.TestCase):
@@ -325,6 +325,139 @@ class SkyArtAuthTestCase(unittest.TestCase):
         home_data = home_res.get_json()
         self.assertEqual(home_data["status"], "success")
         self.assertEqual(home_data["airport"]["icao"], "KPAO")
+
+    # --- Password Reset & Change Verification Tests ---
+
+    def test_password_reset_forgot_flow_success(self):
+        """Logged-out user can request a 6-digit code via email and reset their password."""
+        self.client.post("/api/auth/register", json={
+            "email": "forgotpilot@example.com",
+            "password": "OldPassword123!"
+        })
+        self.client.post("/api/auth/logout")
+
+        # Request verification code
+        req_res = self.client.post("/api/auth/password-reset/request", json={
+            "email": "forgotpilot@example.com"
+        })
+        self.assertEqual(req_res.status_code, 200)
+        req_data = req_res.get_json()
+        self.assertEqual(req_data.get("status"), "success")
+        code = req_data.get("debug_code")
+        self.assertIsNotNone(code)
+        self.assertEqual(len(code), 6)
+
+        # Verify code and update password
+        verify_res = self.client.post("/api/auth/password-reset/verify", json={
+            "email": "forgotpilot@example.com",
+            "code": code,
+            "new_password": "NewBrandPassword456$"
+        })
+        self.assertEqual(verify_res.status_code, 200)
+        self.assertEqual(verify_res.get_json()["status"], "success")
+
+        # Old password must now fail
+        self.client.post("/api/auth/logout")
+        fail_login = self.client.post("/api/auth/login", json={
+            "email": "forgotpilot@example.com",
+            "password": "OldPassword123!"
+        })
+        self.assertEqual(fail_login.status_code, 401)
+
+        # New password must succeed
+        ok_login = self.client.post("/api/auth/login", json={
+            "email": "forgotpilot@example.com",
+            "password": "NewBrandPassword456$"
+        })
+        self.assertEqual(ok_login.status_code, 200)
+
+    def test_password_change_logged_in_flow(self):
+        """Logged-in user requires correct current password + email code to change password."""
+        self.client.post("/api/auth/register", json={
+            "email": "loggedin@example.com",
+            "password": "InitialPass123!"
+        })
+
+        # Request code (uses current session user)
+        req_res = self.client.post("/api/auth/password-reset/request", json={})
+        self.assertEqual(req_res.status_code, 200)
+        code = req_res.get_json().get("debug_code")
+
+        # Fails if current password is incorrect
+        wrong_curr = self.client.post("/api/auth/password-reset/verify", json={
+            "current_password": "WrongPassword999!",
+            "code": code,
+            "new_password": "UpdatedPassword789#"
+        })
+        self.assertEqual(wrong_curr.status_code, 400)
+        self.assertIn("Incorrect current password", wrong_curr.get_json()["message"])
+
+        # Succeeds when current password + code + new password are correct
+        ok_res = self.client.post("/api/auth/password-reset/verify", json={
+            "current_password": "InitialPass123!",
+            "code": code,
+            "new_password": "UpdatedPassword789#"
+        })
+        self.assertEqual(ok_res.status_code, 200)
+        self.assertEqual(ok_res.get_json()["status"], "success")
+
+    def test_password_reset_brute_force_protection(self):
+        """Submitting 5 incorrect codes invalidates the token."""
+        self.client.post("/api/auth/register", json={
+            "email": "bruteforce@example.com",
+            "password": "SecurePassword123!"
+        })
+        self.client.post("/api/auth/logout")
+
+        req_res = self.client.post("/api/auth/password-reset/request", json={
+            "email": "bruteforce@example.com"
+        })
+        valid_code = req_res.get_json().get("debug_code")
+
+        # Attempt 1-4 with wrong code
+        for _ in range(4):
+            res = self.client.post("/api/auth/password-reset/verify", json={
+                "email": "bruteforce@example.com",
+                "code": "000000",
+                "new_password": "AnotherPassword123!"
+            })
+            self.assertEqual(res.status_code, 400)
+
+        # 5th attempt invalidates token
+        res_5 = self.client.post("/api/auth/password-reset/verify", json={
+            "email": "bruteforce@example.com",
+            "code": "000000",
+            "new_password": "AnotherPassword123!"
+        })
+        self.assertEqual(res_5.status_code, 400)
+        self.assertIn("invalidated", res_5.get_json()["message"])
+
+        # Even the correct code now fails because token was invalidated
+        res_valid = self.client.post("/api/auth/password-reset/verify", json={
+            "email": "bruteforce@example.com",
+            "code": valid_code,
+            "new_password": "AnotherPassword123!"
+        })
+        self.assertEqual(res_valid.status_code, 400)
+
+    def test_password_reset_complexity_enforcement(self):
+        """Weak new passwords must be rejected."""
+        self.client.post("/api/auth/register", json={
+            "email": "complex@example.com",
+            "password": "InitialPassword123!"
+        })
+        req_res = self.client.post("/api/auth/password-reset/request", json={
+            "email": "complex@example.com"
+        })
+        code = req_res.get_json().get("debug_code")
+
+        # Weak password (no number or special)
+        weak_res = self.client.post("/api/auth/password-reset/verify", json={
+            "email": "complex@example.com",
+            "code": code,
+            "new_password": "weakpassword"
+        })
+        self.assertEqual(weak_res.status_code, 400)
 
 
 if __name__ == "__main__":
