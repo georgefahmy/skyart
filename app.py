@@ -1673,6 +1673,13 @@ def favicon():
     return app.send_static_file("favicon.svg")
 
 
+@app.route("/apple-touch-icon.png")
+@app.route("/apple-touch-icon-precomposed.png")
+def apple_touch_icon():
+    """Serves standard Apple iOS / Safari touch icon (180x180 PNG)."""
+    return app.send_static_file("apple-touch-icon.png")
+
+
 @app.route("/robots.txt")
 def robots():
     """Serves standard search engine crawler rules."""

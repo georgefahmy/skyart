@@ -25,6 +25,16 @@ class TestServerIntegrity(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertIn(b'<svg', res.data)
 
+    def test_apple_touch_icon_loads(self):
+        res = self.client.get('/apple-touch-icon.png')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.mimetype, 'image/png')
+        self.assertTrue(len(res.data) > 100)
+
+        res_pre = self.client.get('/apple-touch-icon-precomposed.png')
+        self.assertEqual(res_pre.status_code, 200)
+        self.assertEqual(res_pre.mimetype, 'image/png')
+
     def test_static_js_contains_sync_fix(self):
         res = self.client.get('/static/js/sky_art.js')
         self.assertEqual(res.status_code, 200)
