@@ -4,7 +4,22 @@
 # ==============================================================================
 set -euo pipefail
 
-SERVER="georgefahmy@192.168.68.89"
+DEFAULT_LAN_SERVER="georgefahmy@192.168.68.89"
+DEFAULT_WAN_SERVER="georgefahmy@68.189.58.242"
+SERVER="${SERVER:-}"
+
+if [ -z "$SERVER" ]; then
+  if python3 -c "import socket; s=socket.socket(); s.settimeout(0.8); exit(0 if s.connect_ex(('192.168.68.89', 22))==0 else 1)" 2>/dev/null; then
+    SERVER="$DEFAULT_LAN_SERVER"
+    SERVER_DESC="Local Home LAN ($SERVER)"
+  else
+    SERVER="$DEFAULT_WAN_SERVER"
+    SERVER_DESC="Remote WAN ($SERVER)"
+  fi
+else
+  SERVER_DESC="Custom Server ($SERVER)"
+fi
+
 REMOTE_DIR="/home/georgefahmy/Documents/sky_art"
 
 echo "🧪 [1/4] Running local verification tests..."
