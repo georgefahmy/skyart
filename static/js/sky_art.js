@@ -8,7 +8,7 @@
     'use strict';
 
     // Application Version (Synchronized across User Guide, UI Badges, and Cache-Busting)
-    const APP_VERSION = '2.3.3';
+    const APP_VERSION = '2.3.4';
 
     // --- User Instance Identification ---
     const USER_ID_STORAGE_KEY = 'sky_art_user_instance_id';

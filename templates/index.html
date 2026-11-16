@@ -1074,7 +1074,7 @@
                     <div>
                         <div class="d-flex align-items-center gap-2">
                             <h5 class="modal-title fw-bold mb-0" id="userGuideModalLabel">SkyArt Studio — User Guide &amp; Manual</h5>
-                            <span class="badge bg-warning text-dark font-monospace" id="userGuideVersionBadge" style="font-size: 0.72rem;">v{{ app_version | default('2.3.3') }}</span>
+                            <span class="badge bg-warning text-dark font-monospace" id="userGuideVersionBadge" style="font-size: 0.72rem;">v{{ app_version | default('2.3.4') }}</span>
                         </div>
                         <div class="text-white-50 small">Everything you need to know about designing, editing, and flying GPS Sky Art.</div>
                     </div>
@@ -1870,7 +1870,7 @@
                         <label for="profilePilotNameInput" class="form-label small fw-bold text-muted mb-1">
                             <i class="bi bi-person-fill me-1 text-primary"></i>Pilot Name / Callsign
                         </label>
-                        <input type="text" class="form-control" id="profilePilotNameInput" placeholder="e.g. Jim Bob or Capt. Sully" maxlength="120">
+                        <input type="text" class="form-control" id="profilePilotNameInput" maxlength="120">
                     </div>
 
                     <div class="row g-2 mb-3">
@@ -1878,13 +1878,13 @@
                             <label for="profileTailNumberInput" class="form-label small fw-bold text-muted mb-1">
                                 <i class="bi bi-tag-fill me-1 text-primary"></i>Tail / N-Number
                             </label>
-                            <input type="text" class="form-control text-uppercase font-monospace" id="profileTailNumberInput" placeholder="e.g. N12345" maxlength="32">
+                            <input type="text" class="form-control text-uppercase font-monospace" id="profileTailNumberInput" maxlength="32">
                         </div>
                         <div class="col-6 position-relative">
                             <label for="profileHomeAirportInput" class="form-label small fw-bold text-muted mb-1">
                                 <i class="bi bi-geo-alt-fill me-1 text-danger"></i>Home Airport
                             </label>
-                            <input type="text" class="form-control text-uppercase font-monospace" id="profileHomeAirportInput" placeholder="e.g. KSQL, KLAX" maxlength="20" autocomplete="off">
+                            <input type="text" class="form-control text-uppercase font-monospace" id="profileHomeAirportInput" maxlength="20" autocomplete="off">
                             <div id="profileHomeSearchResults" class="airport-autocomplete-list d-none shadow-sm" style="position: absolute; top: 100%; left: 0; right: 0; max-height: 180px; overflow-y: auto; z-index: 1060;"></div>
                         </div>
                     </div>
@@ -1893,7 +1893,7 @@
                         <label for="profileAircraftTypeInput" class="form-label small fw-bold text-muted mb-1">
                             <i class="bi bi-airplane-fill me-1 text-primary"></i>Aircraft Make / Model
                         </label>
-                        <input type="text" class="form-control" id="profileAircraftTypeInput" placeholder="e.g. Cessna 172 or Skyhawk" maxlength="64">
+                        <input type="text" class="form-control" id="profileAircraftTypeInput" maxlength="64">
                     </div>
 
                     <div id="profileFormAlert" class="alert alert-danger small py-2 px-3 d-none" role="alert"></div>
@@ -2092,7 +2092,7 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 </script>
 
-<script src="/static/js/sky_art.js?v={{ app_version | default('2.3.3') }}"></script>
+<script src="/static/js/sky_art.js?v={{ app_version | default('2.3.4') }}"></script>
 
 </body>
 </html>

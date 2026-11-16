@@ -42,7 +42,7 @@ if os.path.exists(ENV_FILE):
         pass
 
 app = Flask(__name__, instance_path=INSTANCE_DIR)
-APP_VERSION = "2.3.3"
+APP_VERSION = "2.3.4"
 app.secret_key = os.environ.get("SECRET_KEY", "skyart-standalone-secret-key-9281729482")
 
 @app.context_processor
