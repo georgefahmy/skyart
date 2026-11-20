@@ -19,6 +19,11 @@ function createEnvironment() {
                 value: '',
                 innerText: '',
                 innerHTML: '',
+                checked: false,
+                required: false,
+                open: false,
+                returnValue: '',
+                attributes: {},
                 style: { display: '' },
                 classList: {
                     classes: new Set(),
@@ -36,15 +41,32 @@ function createEnvironment() {
                         }
                     }
                 },
+                setAttribute(k, v) {
+                    this.attributes[k] = String(v);
+                },
+                getAttribute(k) {
+                    return Object.prototype.hasOwnProperty.call(this.attributes, k) ? this.attributes[k] : null;
+                },
+                removeAttribute(k) {
+                    delete this.attributes[k];
+                },
+                showModal() {
+                    this.open = true;
+                },
+                close() {
+                    this.open = false;
+                    this.dispatchEvent('close');
+                },
                 addEventListener(ev, fn) {
                     this['on_' + ev] = fn;
                 },
                 dispatchEvent(ev, data = {}) {
                     const evName = typeof ev === 'string' ? ev : (ev.type || 'click');
                     if (typeof this['on_' + evName] === 'function') {
-                        this['on_' + evName]({ preventDefault() {}, target: this, ...data });
+                        return this['on_' + evName]({ preventDefault() {}, stopPropagation() {}, target: this, ...data });
                     }
                 },
+                querySelector() { return null; },
                 querySelectorAll() { return []; },
                 closest() { return null; },
                 focus() {},
@@ -112,7 +134,7 @@ function createEnvironment() {
         String: String,
         setTimeout: setTimeout,
         clearTimeout: clearTimeout,
-        fetch: mockWindow.fetch
+        fetch: (...args) => mockWindow.fetch(...args)
     });
     vm.runInContext(skyArtJsCode, context);
     return { mockWindow, mockDocument, getOrCreateElement };
@@ -277,4 +299,95 @@ assert.strictEqual(mismatchAlert.classList.contains('d-none'), true, "Mismatch a
 
 console.log("✅ Test 6 Passed: Password Reset and Change UI toggles between Logged-In and Forgot modes with live validation.");
 
-console.log("\n🎉 All Frontend Authentication & Profile UI tests PASSED successfully!\n");
+// Test 7: Terms of Service registration checkbox & native dialog interactions
+(async function runTermsTest() {
+    console.log("\n👉 Test 7: Terms of Service registration checkbox & native dialog interactions...");
+    // Drain any microtasks scheduled by earlier synchronous tests (e.g. onAuthSuccess .finally())
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    mockWindow.setupAuthUI();
+    mockWindow.setupTermsDialog();
+
+    const tabSignInBtn = getOrCreateElement('tabSignInBtn');
+    const tabRegisterBtn = getOrCreateElement('tabRegisterBtn');
+    const authTermsGroup = getOrCreateElement('authTermsGroup');
+    const authTermsCheck = getOrCreateElement('authTermsCheck');
+    const authTermsError = getOrCreateElement('authTermsError');
+    const authEmailInput = getOrCreateElement('authEmailInput');
+    const authPasswordInput = getOrCreateElement('authPasswordInput');
+    const authForm = getOrCreateElement('authForm');
+    const termsDialog = getOrCreateElement('termsOfServiceDialog');
+    const closeTermsDialogBtn = getOrCreateElement('closeTermsDialogBtn');
+
+    // Initialize error/group classes matching DOM defaults
+    authTermsGroup.classList.add('d-none');
+    authTermsError.classList.add('d-none');
+
+    // Switch to Create Account tab -> terms checkbox shown & required
+    tabRegisterBtn.dispatchEvent('click');
+    assert.strictEqual(authTermsGroup.classList.contains('d-none'), false, "Terms checkbox group must be visible in register mode");
+    assert.strictEqual(authTermsCheck.required, true, "Terms checkbox must be required in register mode");
+
+    // Switch back to Sign In tab -> terms checkbox hidden & not required
+    tabSignInBtn.dispatchEvent('click');
+    assert.strictEqual(authTermsGroup.classList.contains('d-none'), true, "Terms checkbox group must be hidden in login mode");
+    assert.strictEqual(authTermsCheck.required, false, "Terms checkbox must not be required in login mode");
+
+    // Switch back to Create Account and attempt submit without checking Terms
+    tabRegisterBtn.dispatchEvent('click');
+    authEmailInput.value = 'newpilot@example.com';
+    authPasswordInput.value = 'StrongPass123!';
+    authTermsCheck.checked = false;
+
+    const authFetchUrls = [];
+    const prevFetch = mockWindow.fetch;
+    mockWindow.fetch = async (url) => {
+        authFetchUrls.push(String(url));
+        return { ok: true, json: async () => ({ authenticated: false }) };
+    };
+
+    await authForm.dispatchEvent('submit');
+    mockWindow.fetch = prevFetch;
+
+    assert.strictEqual(authFetchUrls.length, 0, "Registration form must not call fetch when Terms checkbox is unchecked");
+    assert.strictEqual(authTermsError.classList.contains('d-none'), false, "Terms error message must be visible on unchecked submit");
+    assert.strictEqual(authTermsCheck.getAttribute('aria-invalid'), 'true', "Terms checkbox must have aria-invalid='true' when validation fails");
+
+    // Check Terms -> clears error and aria-invalid
+    authTermsCheck.checked = true;
+    authTermsCheck.dispatchEvent('change');
+    assert.strictEqual(authTermsError.classList.contains('d-none'), true, "Terms error message must hide once Terms checkbox is checked");
+    assert.strictEqual(authTermsCheck.getAttribute('aria-invalid'), null, "aria-invalid must be cleared once checked");
+
+    // Open & close native Terms dialog
+    mockWindow.openTermsDialog();
+    assert.strictEqual(termsDialog.open, true, "openTermsDialog must open native termsOfServiceDialog");
+    closeTermsDialogBtn.dispatchEvent('click');
+    assert.strictEqual(termsDialog.open, false, "Clicking closeTermsDialogBtn must close termsOfServiceDialog");
+
+    console.log("✅ Test 7 Passed: Terms of Service registration validation & native dialog controls work cleanly.");
+
+    // Test 8: Privacy Policy native dialog controls & mutual exclusion with Terms dialog
+    console.log("\n👉 Test 8: Privacy Policy native dialog controls & mutual exclusion...");
+    mockWindow.setupPrivacyDialog();
+    const privacyDialog = getOrCreateElement('privacyPolicyDialog');
+    const closePrivacyDialogBtn = getOrCreateElement('closePrivacyDialogBtn');
+
+    // Open Terms first, then switch to Privacy -> must close Terms before opening Privacy
+    mockWindow.openTermsDialog();
+    assert.strictEqual(termsDialog.open, true, "Terms dialog should open before switching");
+    mockWindow.openPrivacyDialog();
+    assert.strictEqual(termsDialog.open, false, "openPrivacyDialog must close an open Terms dialog to avoid stacked modals");
+    assert.strictEqual(privacyDialog.open, true, "openPrivacyDialog must open native privacyPolicyDialog");
+
+    privacyDialog.returnValue = 'stale';
+    closePrivacyDialogBtn.dispatchEvent('click');
+    assert.strictEqual(privacyDialog.open, false, "Clicking closePrivacyDialogBtn must close privacyPolicyDialog");
+    assert.strictEqual(privacyDialog.returnValue, '', "Closing privacyPolicyDialog must reset stale returnValue");
+
+    console.log("✅ Test 8 Passed: Privacy Policy native dialog closes Terms when switching and resets returnValue cleanly.");
+    console.log("\n🎉 All Frontend Authentication & Profile UI tests PASSED successfully!\n");
+})().catch((err) => {
+    console.error("❌ Test 7 Failed:", err);
+    process.exit(1);
+});

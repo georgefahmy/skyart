@@ -8,7 +8,7 @@
     'use strict';
 
     // Application Version (Synchronized across User Guide, UI Badges, and Cache-Busting)
-    const APP_VERSION = '2.3.4';
+    const APP_VERSION = '2.3.5';
 
     // --- User Instance Identification ---
     const USER_ID_STORAGE_KEY = 'sky_art_user_instance_id';
@@ -7328,6 +7328,140 @@
         updateItem('pwReqSpecial', rules.special, 'At least 1 special character (!@#$%^&* etc.)');
     }
 
+    function openLegalDialog(dialogId, otherDialogId) {
+        if (otherDialogId) {
+            const otherDialog = document.getElementById(otherDialogId);
+            if (otherDialog && otherDialog.open && typeof otherDialog.close === 'function') {
+                otherDialog.close();
+            }
+        }
+        const dialog = document.getElementById(dialogId);
+        if (!dialog) return;
+        if (!dialog.open && typeof dialog.showModal === 'function') {
+            dialog.showModal();
+        }
+        const body = typeof dialog.querySelector === 'function'
+            ? dialog.querySelector('.terms-dialog-body')
+            : null;
+        if (body) {
+            body.scrollTop = 0;
+        }
+    }
+
+    function openTermsDialog() {
+        openLegalDialog('termsOfServiceDialog', 'privacyPolicyDialog');
+    }
+
+    function openPrivacyDialog() {
+        openLegalDialog('privacyPolicyDialog', 'termsOfServiceDialog');
+    }
+
+    function attachLegalDialogControls({
+        dialogId,
+        triggerSelector,
+        menuBtnId,
+        guideBtnId,
+        closeHeaderBtnId,
+        closeFooterBtnId,
+        openFn
+    }) {
+        const dialog = document.getElementById(dialogId);
+        const closeHeaderBtn = document.getElementById(closeHeaderBtnId);
+        const closeFooterBtn = document.getElementById(closeFooterBtnId);
+        const menuTriggerBtn = document.getElementById(menuBtnId);
+        const guideTriggerBtn = document.getElementById(guideBtnId);
+
+        const linkTriggers = typeof document.querySelectorAll === 'function'
+            ? document.querySelectorAll(triggerSelector)
+            : [];
+        linkTriggers.forEach((trigger) => {
+            trigger.addEventListener('click', (e) => {
+                if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || (e.button !== undefined && e.button !== 0)) {
+                    return;
+                }
+                e.preventDefault();
+                e.stopPropagation();
+                openFn();
+            });
+        });
+
+        menuTriggerBtn?.addEventListener('click', () => {
+            openFn();
+        });
+
+        guideTriggerBtn?.addEventListener('click', () => {
+            const guideModalEl = document.getElementById('userGuideModal');
+            if (guideModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                const guideModal = bootstrap.Modal.getInstance(guideModalEl);
+                if (guideModal && guideModalEl.classList?.contains('show')) {
+                    guideModalEl.addEventListener('hidden.bs.modal', () => {
+                        openFn();
+                    }, { once: true });
+                    guideModal.hide();
+                    return;
+                }
+            }
+            openFn();
+        });
+
+        [closeHeaderBtn, closeFooterBtn].forEach((btn) => {
+            btn?.addEventListener('click', () => {
+                if (dialog && typeof dialog.close === 'function') {
+                    dialog.close();
+                }
+            });
+        });
+
+        if (dialog && typeof dialog.addEventListener === 'function') {
+            dialog.addEventListener('close', () => {
+                dialog.returnValue = '';
+            });
+
+            const supportsClosedBy = typeof HTMLDialogElement !== 'undefined' && ('closedBy' in HTMLDialogElement.prototype);
+            if (!supportsClosedBy) {
+                const isOutside = (e) => {
+                    if (typeof dialog.getBoundingClientRect !== 'function') return false;
+                    const r = dialog.getBoundingClientRect();
+                    return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+                };
+                let pressedOutside = false;
+                dialog.addEventListener('pointerdown', (e) => {
+                    pressedOutside = isOutside(e);
+                });
+                dialog.addEventListener('pointerup', (e) => {
+                    if (pressedOutside && isOutside(e) && typeof dialog.close === 'function') {
+                        dialog.close();
+                    }
+                    pressedOutside = false;
+                });
+            }
+        }
+    }
+
+    function setupTermsDialog() {
+        attachLegalDialogControls({
+            dialogId: 'termsOfServiceDialog',
+            triggerSelector: '.open-terms-trigger',
+            menuBtnId: 'openTermsFromMenuBtn',
+            guideBtnId: 'openTermsFromGuideBtn',
+            closeHeaderBtnId: 'closeTermsDialogHeaderBtn',
+            closeFooterBtnId: 'closeTermsDialogBtn',
+            openFn: openTermsDialog
+        });
+    }
+
+    function setupPrivacyDialog() {
+        attachLegalDialogControls({
+            dialogId: 'privacyPolicyDialog',
+            triggerSelector: '.open-privacy-trigger',
+            menuBtnId: 'openPrivacyFromMenuBtn',
+            guideBtnId: 'openPrivacyFromGuideBtn',
+            closeHeaderBtnId: 'closePrivacyDialogHeaderBtn',
+            closeFooterBtnId: 'closePrivacyDialogBtn',
+            openFn: openPrivacyDialog
+        });
+    }
+
     function setupAuthUI() {
         const tabSignInBtn = document.getElementById('tabSignInBtn');
         const tabRegisterBtn = document.getElementById('tabRegisterBtn');
@@ -7337,6 +7471,9 @@
         const authAlertBanner = document.getElementById('authAlertBanner');
         const authEmailInput = document.getElementById('authEmailInput');
         const authPasswordInput = document.getElementById('authPasswordInput');
+        const authTermsGroup = document.getElementById('authTermsGroup');
+        const authTermsCheck = document.getElementById('authTermsCheck');
+        const authTermsError = document.getElementById('authTermsError');
         const authForm = document.getElementById('authForm');
         const togglePwBtn = document.getElementById('togglePasswordVisibilityBtn');
         const logoutBtn = document.getElementById('logoutBtn');
@@ -7348,22 +7485,35 @@
             if (!authModeInput) return;
             authModeInput.value = mode;
             if (authAlertBanner) authAlertBanner.classList.add('d-none');
+            if (authTermsError) authTermsError.classList.add('d-none');
+            authTermsCheck?.removeAttribute?.('aria-invalid');
 
             if (mode === 'register') {
                 if (tabRegisterBtn) tabRegisterBtn.classList.add('active');
                 if (tabSignInBtn) tabSignInBtn.classList.remove('active');
                 if (authSubmitBtnText) authSubmitBtnText.innerText = 'Create Account';
                 if (authPasswordRequirements) authPasswordRequirements.classList.remove('d-none');
+                if (authTermsGroup) authTermsGroup.classList.remove('d-none');
+                if (authTermsCheck) authTermsCheck.required = true;
             } else {
                 if (tabSignInBtn) tabSignInBtn.classList.add('active');
                 if (tabRegisterBtn) tabRegisterBtn.classList.remove('active');
                 if (authSubmitBtnText) authSubmitBtnText.innerText = 'Sign In to SkyArt';
                 if (authPasswordRequirements) authPasswordRequirements.classList.add('d-none');
+                if (authTermsGroup) authTermsGroup.classList.add('d-none');
+                if (authTermsCheck) authTermsCheck.required = false;
             }
         }
 
         tabSignInBtn?.addEventListener('click', () => setAuthMode('login'));
         tabRegisterBtn?.addEventListener('click', () => setAuthMode('register'));
+
+        authTermsCheck?.addEventListener('change', () => {
+            if (authTermsCheck.checked) {
+                if (authTermsError) authTermsError.classList.add('d-none');
+                authTermsCheck.removeAttribute?.('aria-invalid');
+            }
+        });
 
         if (authPasswordInput) {
             authPasswordInput.addEventListener('input', () => {
@@ -7400,6 +7550,8 @@
         authForm?.addEventListener('submit', async (e) => {
             e.preventDefault();
             if (authAlertBanner) authAlertBanner.classList.add('d-none');
+            if (authTermsError) authTermsError.classList.add('d-none');
+            authTermsCheck?.removeAttribute?.('aria-invalid');
 
             const email = (authEmailInput?.value || '').trim();
             const password = authPasswordInput?.value || '';
@@ -7437,6 +7589,17 @@
                     authPasswordInput?.focus();
                     return;
                 }
+
+                if (authTermsCheck && !authTermsCheck.checked) {
+                    authTermsCheck.setAttribute?.('aria-invalid', 'true');
+                    if (authTermsError) authTermsError.classList.remove('d-none');
+                    if (authAlertBanner) {
+                        authAlertBanner.innerText = 'Please agree to the Terms of Service to create an account.';
+                        authAlertBanner.classList.remove('d-none');
+                    }
+                    authTermsCheck.focus?.();
+                    return;
+                }
             }
 
             // Submit
@@ -7445,10 +7608,14 @@
 
             try {
                 const endpoint = mode === 'register' ? '/api/auth/register' : '/api/auth/login';
+                const payload = { email, password, rememberMe };
+                if (mode === 'register') {
+                    payload.termsAccepted = !!authTermsCheck?.checked;
+                }
                 const res = await fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password, rememberMe })
+                    body: JSON.stringify(payload)
                 });
 
                 const data = await res.json().catch(() => ({}));
@@ -7456,6 +7623,7 @@
                 if (res.ok && data.user) {
                     onAuthSuccess(data.user, true);
                     if (authPasswordInput) authPasswordInput.value = '';
+                    if (authTermsCheck && mode === 'register') authTermsCheck.checked = false;
                 } else {
                     const msg = data.message || 'Authentication failed. Please check your credentials and try again.';
                     if (authAlertBanner) {
@@ -7819,6 +7987,8 @@
         setupAirportControls();
         bindUiControls();
         setupAuthUI();
+        setupTermsDialog();
+        setupPrivacyDialog();
         setupProfileUI();
         setupPasswordResetUI();
         setupFeedbackForm();
@@ -7840,6 +8010,11 @@
     window.showPilotProfileModal = showPilotProfileModal;
     window.populateProfileModal = populateProfileModal;
     window.setupProfileUI = setupProfileUI;
+    window.setupAuthUI = setupAuthUI;
+    window.setupTermsDialog = setupTermsDialog;
+    window.openTermsDialog = openTermsDialog;
+    window.setupPrivacyDialog = setupPrivacyDialog;
+    window.openPrivacyDialog = openPrivacyDialog;
     window.setupPasswordResetUI = setupPasswordResetUI;
     window.generateForeFlightRouteString = generateForeFlightRouteString;
     window.generateGarminFplXml = generateGarminFplXml;

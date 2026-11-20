@@ -1,0 +1,143 @@
+<div class="terms-content">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 pb-3 mb-3 border-bottom small text-muted">
+        <div>
+            <span class="fw-semibold">Version {{ privacy_version | default('1.0') }}</span>
+            <span class="mx-2" aria-hidden="true">&bull;</span>
+            <span>Last Updated: {{ privacy_last_updated | default('November 20, 2026') }}</span>
+        </div>
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border">SkyArt Studio Privacy Policy</span>
+    </div>
+
+    <div class="alert alert-info privacy-summary-banner mb-4" role="note">
+        <div class="d-flex align-items-start gap-2">
+            <i class="bi bi-shield-check fs-5 flex-shrink-0 mt-1" aria-hidden="true"></i>
+            <div>
+                <div class="fw-bold text-uppercase small mb-1">
+                    Privacy at a Glance
+                </div>
+                <p class="small mb-0">
+                    SkyArt Studio stores only the information needed to operate your account, sync saved drawings and home
+                    airports, deliver password verification emails, and protect site security. Uploaded tracing images are
+                    processed <strong>locally in your browser</strong>, we do not run third-party advertising trackers, and
+                    we <strong>never sell</strong> your personal data.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <section class="mb-4">
+        <h2 class="h5 fw-bold mb-2">1. Overview &amp; Scope</h2>
+        <p class="small mb-0">
+            This Privacy Policy explains how SkyArt Studio (&ldquo;Service&rdquo;) collects, uses, stores, and protects
+            information when you visit the website, create an account, design or save flight-art routes, or submit feedback.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5 fw-bold mb-2">2. Information We Collect</h2>
+        <p class="small mb-2">Depending on how you use SkyArt Studio, we may collect and store the following categories of information:</p>
+        <ul class="small mb-0">
+            <li><strong>Account Credentials &amp; Terms Record:</strong> Your email address, a salted cryptographic password hash (using <code>scrypt</code> &mdash; plaintext passwords are never stored), account creation and last-login timestamps, and the timestamp and version of the Terms of Service accepted at registration.</li>
+            <li><strong>Optional Pilot Profile Details:</strong> If you choose to enter them, your pilot name or callsign, aircraft tail / N-number, home airport ICAO/FAA identifier, and aircraft make/model. All profile fields are optional and can be edited or cleared at any time.</li>
+            <li><strong>Saved Content &amp; Feedback:</strong> Custom drawing names, route geometry (lat/lon waypoints, contours, dimensions, and aspect settings) saved to your account, your configured default home airport, and any feedback messages, contact email, and optional flight-plan diagnostics you submit.</li>
+            <li><strong>Technical Server &amp; Security Logs:</strong> Standard server access and security logs (including IP address, timestamps, HTTP method and path, status code, and authentication, save, or export events) written to rotating server log files for abuse prevention and troubleshooting.</li>
+        </ul>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5 fw-bold mb-2">3. Client-Side Image &amp; File Processing</h2>
+        <p class="small mb-0">
+            When you import or trace an image file (such as PNG, JPEG, SVG, or HEIC) or load a tracing lightbox overlay in
+            the Studio, that image is decoded and traced <strong>locally inside your browser</strong> to extract canvas paths
+            and waypoints. Source images are not permanently hosted on the server as public image galleries; only waypoint
+            coordinates and drawing metadata you explicitly save are sent to your account.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5 fw-bold mb-2">4. How We Use Information</h2>
+        <p class="small mb-2">We use collected information strictly to operate, secure, and improve SkyArt Studio:</p>
+        <ul class="small mb-0">
+            <li>To authenticate your sessions and associate your saved drawings and default home airport with your account.</li>
+            <li>To send one-time 6-digit email verification codes for password changes and forgotten-password recovery.</li>
+            <li>To receive, review, and reply to feedback or bug reports you choose to send.</li>
+            <li>To enforce rate limits (such as login, registration, and OTP request throttling), prevent automated abuse, and diagnose server errors.</li>
+        </ul>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5 fw-bold mb-2">5. Cookies &amp; Local Browser Storage</h2>
+        <p class="small mb-2">
+            SkyArt Studio uses strictly functional cookies and browser storage rather than advertising or behavioral tracking cookies:
+        </p>
+        <ul class="small mb-0">
+            <li><strong>Authentication Session Cookie:</strong> An <code>HttpOnly</code>, <code>SameSite=Lax</code> Flask session cookie keeps you signed in (for up to 30 days when &ldquo;Remember me on this device&rdquo; is checked, or for the browser session otherwise).</li>
+            <li><strong>Instance Identifier Cookie (<code>skyart_uid</code>):</strong> A pseudonymous client identifier cookie (<code>SameSite=Lax</code>) used to associate pre-login local preferences or home airport state cleanly with your browser.</li>
+            <li><strong>Browser <code>localStorage</code>:</strong> Stores interface preferences such as dark/light theme selection (<code>theme</code>), local instance ID (<code>sky_art_user_instance_id</code>), temporary local drawings pending account migration, and whether initial pilot-profile onboarding has been shown.</li>
+            <li><strong>No Ad Trackers:</strong> We do not set third-party advertising cookies, behavioral analytics beacons, or cross-site tracking scripts.</li>
+        </ul>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5 fw-bold mb-2">6. Third-Party Services &amp; External Requests</h2>
+        <p class="small mb-2">
+            To display maps, fonts, and frontend libraries, your browser makes standard requests (which expose your IP address
+            and standard browser headers to those providers under their respective privacy policies) to:
+        </p>
+        <ul class="small mb-0">
+            <li><strong>Map Tile Providers:</strong> OpenStreetMap, CARTO Basemaps, and Esri World Imagery for aeronautical/topographic map backgrounds.</li>
+            <li><strong>Web Fonts &amp; CDNs:</strong> Google Fonts (for Text-to-Sky Art and typography) and public CDNs serving Bootstrap, Bootstrap Icons, Leaflet, QRCode.js, and <code>heic2any</code>.</li>
+            <li><strong>Email Delivery (SMTP):</strong> Configured SMTP mail delivery to send password verification codes to your email address and deliver feedback messages to the operator.</li>
+            <li><strong>User-Initiated Exports:</strong> Exporting flight plans (<code>.fpl</code>, <code>.gpx</code>, <code>.kml</code>, QR codes, or ForeFlight deep links) occurs only when triggered by you.</li>
+        </ul>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5 fw-bold mb-2">7. Data Retention &amp; Security</h2>
+        <p class="small mb-2">
+            We employ reasonable administrative and technical safeguards to protect account information:
+        </p>
+        <ul class="small mb-0">
+            <li>Passwords and 6-digit password reset codes are stored exclusively as salted <code>scrypt</code> hashes, reset codes expire in 15 minutes and invalidate after 5 failed attempts, and auth endpoints are rate-limited.</li>
+            <li>Production traffic is served over HTTPS, and session cookies are marked <code>HttpOnly</code> with <code>SameSite=Lax</code>.</li>
+            <li>Rotating server logs are capped at 10 MB per file with up to 5 backup archives. Account data, saved drawings, and feedback remain stored while your account is active or until you delete items or request removal.</li>
+        </ul>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5 fw-bold mb-2">8. Your Choices &amp; Account Deletion</h2>
+        <p class="small mb-0">
+            You may update or clear any optional Pilot Profile fields via the Pilot Profile modal, delete any saved drawings
+            directly in the Studio dropdown, or clear site cookies and <code>localStorage</code> in your browser at any time.
+            To request permanent deletion of your account, feedback submissions, or an export of your stored account data,
+            please email <a href="mailto:vans.rv7.pilot@gmail.com?subject=SkyArt%20Account%20or%20Data%20Request" class="fw-semibold text-primary text-decoration-none">vans.rv7.pilot@gmail.com</a>
+            from your registered email address.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5 fw-bold mb-2">9. Children&rsquo;s Privacy</h2>
+        <p class="small mb-0">
+            SkyArt Studio is not directed to children under 13 years of age, and we do not knowingly collect personal
+            information from children under 13. If you believe a child under 13 has registered an account, please contact
+            us so we can promptly remove the account.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5 fw-bold mb-2">10. Changes to This Privacy Policy</h2>
+        <p class="small mb-0">
+            We may update this Privacy Policy periodically to reflect improvements or operational changes. When updates
+            are posted, the Version number and Last Updated date above will be revised.
+        </p>
+    </section>
+
+    <section class="mb-0">
+        <h2 class="h5 fw-bold mb-2">11. Contact</h2>
+        <p class="small mb-0">
+            Questions or requests regarding this Privacy Policy may be sent to
+            <a href="mailto:vans.rv7.pilot@gmail.com?subject=SkyArt%20Privacy%20Policy" class="fw-semibold text-primary text-decoration-none">vans.rv7.pilot@gmail.com</a>.
+            Please also review our <a href="/terms" class="fw-semibold text-primary text-decoration-none open-terms-trigger">Terms of Service</a>.
+        </p>
+    </section>
+</div>

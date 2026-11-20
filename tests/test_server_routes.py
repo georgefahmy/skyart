@@ -189,7 +189,8 @@ class TestServerIntegrity(unittest.TestCase):
         # Register test user to authenticate session
         self.client.post("/api/auth/register", json={
             "email": f"{uid}@example.com",
-            "password": "Password123!"
+            "password": "Password123!",
+            "termsAccepted": True
         })
 
         with self.assertLogs(app.logger, level='INFO') as cm:
@@ -296,6 +297,42 @@ class TestServerIntegrity(unittest.TestCase):
             self.assertEqual(fb.message, test_msg)
             self.assertEqual(fb.ip_address, "198.51.100.42")
             self.assertIn("preset", fb.diagnostics_json)
+
+    def test_terms_of_service_routes(self):
+        """Verify standalone Terms of Service pages and in-app dialog markup load cleanly."""
+        res_terms = self.client.get('/terms')
+        self.assertEqual(res_terms.status_code, 200)
+        self.assertIn(b'Terms of Service', res_terms.data)
+        self.assertIn(b'NOT FOR PRIMARY NAVIGATION', res_terms.data)
+        self.assertNotIn(b'Author: N890GF', res_terms.data)
+
+        res_alias = self.client.get('/terms-of-service')
+        self.assertEqual(res_alias.status_code, 200)
+        self.assertIn(b'Terms of Service', res_alias.data)
+
+        res_home = self.client.get('/')
+        self.assertEqual(res_home.status_code, 200)
+        self.assertIn(b'termsOfServiceDialog', res_home.data)
+        self.assertIn(b'authTermsCheck', res_home.data)
+        self.assertIn(b'/terms', res_home.data)
+
+    def test_privacy_policy_routes(self):
+        """Verify standalone Privacy Policy pages and in-app dialog markup load cleanly."""
+        res_privacy = self.client.get('/privacy')
+        self.assertEqual(res_privacy.status_code, 200)
+        self.assertIn(b'Privacy Policy', res_privacy.data)
+        self.assertIn(b'scrypt', res_privacy.data)
+        self.assertIn(b'skyart_uid', res_privacy.data)
+        self.assertNotIn(b'Author: N890GF', res_privacy.data)
+
+        res_alias = self.client.get('/privacy-policy')
+        self.assertEqual(res_alias.status_code, 200)
+        self.assertIn(b'Privacy Policy', res_alias.data)
+
+        res_home = self.client.get('/')
+        self.assertEqual(res_home.status_code, 200)
+        self.assertIn(b'privacyPolicyDialog', res_home.data)
+        self.assertIn(b'/privacy', res_home.data)
 
 
 if __name__ == '__main__':

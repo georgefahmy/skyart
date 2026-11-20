@@ -42,12 +42,22 @@ if os.path.exists(ENV_FILE):
         pass
 
 app = Flask(__name__, instance_path=INSTANCE_DIR)
-APP_VERSION = "2.3.4"
+APP_VERSION = "2.3.5"
+TERMS_VERSION = "1.0"
+TERMS_LAST_UPDATED = "November 20, 2026"
+PRIVACY_VERSION = "1.0"
+PRIVACY_LAST_UPDATED = "November 20, 2026"
 app.secret_key = os.environ.get("SECRET_KEY", "skyart-standalone-secret-key-9281729482")
 
 @app.context_processor
 def inject_app_version():
-    return dict(app_version=APP_VERSION)
+    return dict(
+        app_version=APP_VERSION,
+        terms_version=TERMS_VERSION,
+        terms_last_updated=TERMS_LAST_UPDATED,
+        privacy_version=PRIVACY_VERSION,
+        privacy_last_updated=PRIVACY_LAST_UPDATED,
+    )
 
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
 
@@ -167,6 +177,8 @@ class SkyArtUser(db.Model):
     tail_number = db.Column(db.String(32), nullable=True)
     home_airport = db.Column(db.String(20), nullable=True)
     aircraft_type = db.Column(db.String(64), nullable=True)
+    terms_accepted_at = db.Column(db.DateTime, nullable=True)
+    terms_version = db.Column(db.String(32), nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     last_login_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -184,6 +196,8 @@ class SkyArtUser(db.Model):
             "tailNumber": self.tail_number or "",
             "homeAirport": self.home_airport or "",
             "aircraftType": self.aircraft_type or "",
+            "termsAcceptedAt": self.terms_accepted_at.isoformat() if self.terms_accepted_at else None,
+            "termsVersion": self.terms_version,
             "createdAt": self.created_at.isoformat() if self.created_at else None,
             "lastLoginAt": self.last_login_at.isoformat() if self.last_login_at else None,
         }
@@ -491,6 +505,12 @@ with app.app_context():
             if "aircraft_type" not in user_cols:
                 conn.execute(text("ALTER TABLE sky_art_users ADD COLUMN aircraft_type VARCHAR(64)"))
                 conn.commit()
+            if "terms_accepted_at" not in user_cols:
+                conn.execute(text("ALTER TABLE sky_art_users ADD COLUMN terms_accepted_at DATETIME"))
+                conn.commit()
+            if "terms_version" not in user_cols:
+                conn.execute(text("ALTER TABLE sky_art_users ADD COLUMN terms_version VARCHAR(32)"))
+                conn.commit()
     except Exception as e:
         app.logger.warning(f"DB migration check: {e}")
 
@@ -526,6 +546,18 @@ def get_airports_summary_list():
 @app.route("/flight_art")
 def index():
     return render_template("index.html")
+
+
+@app.route("/terms")
+@app.route("/terms-of-service")
+def terms_of_service():
+    return render_template("terms.html")
+
+
+@app.route("/privacy")
+@app.route("/privacy-policy")
+def privacy_policy():
+    return render_template("privacy.html")
 
 
 def _airport_type_rank(atype):
@@ -669,6 +701,7 @@ def api_auth_register():
     raw_email = data.get("email")
     raw_password = data.get("password")
     remember_me = bool(data.get("rememberMe", True))
+    terms_accepted = data.get("termsAccepted")
 
     is_valid_email, email_or_err = validate_email_address(raw_email)
     if not is_valid_email:
@@ -679,6 +712,12 @@ def api_auth_register():
     if not is_valid_pw:
         return jsonify({"status": "error", "message": pw_err}), 400
 
+    if terms_accepted is not True:
+        return jsonify({
+            "status": "error",
+            "message": "You must agree to the Terms of Service to create an account."
+        }), 400
+
     existing_user = SkyArtUser.query.filter_by(email=email).first()
     if existing_user:
         return jsonify({
@@ -687,7 +726,11 @@ def api_auth_register():
         }), 409
 
     try:
-        user = SkyArtUser(email=email)
+        user = SkyArtUser(
+            email=email,
+            terms_accepted_at=datetime.now(timezone.utc),
+            terms_version=TERMS_VERSION,
+        )
         user.set_password(raw_password)
         db.session.add(user)
         db.session.commit()
@@ -696,7 +739,7 @@ def api_auth_register():
         session["user_id"] = user.id
         request._current_user = user
         request._skyart_user_id = user.id
-        app.logger.info(f"[AUTH] Registered new account: {user.email} (ID: {user.id}) from IP: {client_ip}")
+        app.logger.info(f"[AUTH] Registered new account: {user.email} (ID: {user.id}, ToS v{TERMS_VERSION}) from IP: {client_ip}")
 
         return jsonify({
             "status": "success",

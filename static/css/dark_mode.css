@@ -183,4 +183,59 @@ body.dark-mode .modal-footer.bg-light {
     color: #e0e0e0 !important;
 }
 
+/* Terms of Service Dialog & Page Dark Mode */
+body.dark-mode dialog.terms-dialog {
+    background-color: #1e293b;
+    color: #e2e8f0;
+    border-color: rgba(255, 255, 255, 0.14);
+}
+body.dark-mode .terms-dialog-header {
+    background-color: #0f172a;
+    color: #f8fafc;
+    border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+body.dark-mode .terms-dialog-footer {
+    background-color: #162032;
+    border-top-color: rgba(255, 255, 255, 0.12);
+    color: #e2e8f0;
+}
+body.dark-mode .terms-content h2 {
+    color: #f8fafc;
+}
+body.dark-mode .terms-content p,
+body.dark-mode .terms-content li {
+    color: #cbd5e1;
+}
+body.dark-mode .terms-content a {
+    color: #6ea8fe !important;
+}
+body.dark-mode .terms-content a:hover {
+    color: #9ec5fe !important;
+}
+body.dark-mode .terms-safety-banner {
+    background-color: rgba(245, 158, 11, 0.14);
+    border-color: rgba(245, 158, 11, 0.45);
+    color: #fde68a;
+}
+body.dark-mode .terms-safety-banner p,
+body.dark-mode .terms-safety-banner strong {
+    color: #fef3c7;
+}
+body.dark-mode .privacy-summary-banner {
+    background-color: rgba(14, 165, 233, 0.14);
+    border-color: rgba(56, 189, 248, 0.4);
+    color: #bae6fd;
+}
+body.dark-mode .privacy-summary-banner p,
+body.dark-mode .privacy-summary-banner strong {
+    color: #e0f2fe;
+}
+body.dark-mode .sidebar-legal-footer {
+    border-top-color: #333333;
+    color: #9e9e9e !important;
+}
+body.dark-mode .sidebar-legal-footer a {
+    color: #6ea8fe;
+}
+
 

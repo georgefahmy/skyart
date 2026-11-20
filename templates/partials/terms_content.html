@@ -1,0 +1,170 @@
+<div class="terms-content">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 pb-3 mb-3 border-bottom small text-muted">
+        <div>
+            <span class="fw-semibold">Version {{ terms_version | default('1.0') }}</span>
+            <span class="mx-2" aria-hidden="true">&bull;</span>
+            <span>Last Updated: {{ terms_last_updated | default('November 20, 2026') }}</span>
+        </div>
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border">SkyArt Studio Legal &amp; Safety Terms</span>
+    </div>
+
+    <div class="alert alert-warning terms-safety-banner mb-4" role="note">
+        <div class="d-flex align-items-start gap-2">
+            <i class="bi bi-exclamation-triangle-fill fs-5 flex-shrink-0 mt-1" aria-hidden="true"></i>
+            <div>
+                <div class="fw-bold text-uppercase small mb-1">
+                    NOT FOR PRIMARY NAVIGATION &mdash; VFR RECREATIONAL PLANNING ONLY
+                </div>
+                <p class="small mb-0">
+                    SkyArt Studio is an experimental, recreational flight-path visualization and waypoint sketching utility.
+                    It is <strong>not</strong> an FAA-approved, EASA-approved, or otherwise certified flight planning, terrain avoidance,
+                    airspace clearance, or navigation system. Generated waypoints, autopilot turn previews, route legs, distances,
+                    estimated time enroute (ETE), and fuel estimates do <strong>not</strong> account for terrain, obstacles,
+                    controlled or restricted airspace, Temporary Flight Restrictions (TFRs), NOTAMs, weather, winds aloft,
+                    aircraft performance limitations, or required fuel reserves.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <section class="mb-4">
+        <h2 class="h5 fw-bold mb-2">1. Acceptance of Terms</h2>
+        <p class="small mb-2">
+            By accessing, browsing, creating an account on, or using SkyArt Studio (the &ldquo;Service&rdquo;), you agree to be bound
+            by these Terms of Service (&ldquo;Terms&rdquo;). If you do not agree to these Terms, you must not access or use the Service.
+        </p>
+        <p class="small mb-0">
+            You represent that you are legally capable of entering into a binding agreement under applicable law. If you use the Service
+            on behalf of an organization or flight group, you represent that you have authority to bind that entity to these Terms.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5 fw-bold mb-2">2. Pilot-in-Command Responsibility &amp; Aviation Safety Disclaimer</h2>
+        <p class="small mb-2">
+            Under <strong>14 CFR &sect; 91.3</strong> and equivalent international civil aviation regulations, the Pilot-in-Command (PIC)
+            is directly responsible for, and is the final authority as to, the safe operation and conduct of any aircraft flight.
+        </p>
+        <p class="small mb-2">
+            Before conducting any flight or loading any route into aircraft avionics or an Electronic Flight Bag (EFB), the PIC assumes
+            sole and complete responsibility for:
+        </p>
+        <ul class="small mb-0">
+            <li>Independently verifying all coordinates, track headings, leg distances, turn radii, and sequences against current official aeronautical charts and navigation databases.</li>
+            <li>Checking all applicable airspace classifications, clearances, Temporary Flight Restrictions (TFRs), NOTAMs, Special Use Airspace (SUA), terrain, and obstacles.</li>
+            <li>Ensuring compliance with Visual Flight Rules (VFR) weather minimums, traffic pattern procedures, ATC instructions, and aircraft/autopilot operating limitations (POH/AFM).</li>
+            <li>Inspecting and cross-checking any exported files or transfers (including <code>.fpl</code>, <code>.gpx</code>, <code>.kml</code>, ForeFlight deep links, route strings, and QR codes) prior to flight.</li>
+        </ul>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5 fw-bold mb-2">3. Accounts &amp; Security</h2>
+        <p class="small mb-2">
+            Certain features, including saving and syncing custom drawings and pilot preferences, require creating an account with a valid
+            email address and a password that meets complexity requirements. You agree to provide accurate account information so that
+            security verification codes and password recovery messages can be delivered.
+        </p>
+        <p class="small mb-0">
+            You are responsible for maintaining the confidentiality of your password and for all activities that occur under your account.
+            Optional Pilot Profile details (such as pilot name/callsign, tail number, home airport, and aircraft make/model) may be stored
+            solely to personalize your workspace and may be updated or cleared at any time.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5 fw-bold mb-2">4. User Content &amp; Acceptable Use</h2>
+        <p class="small mb-2">
+            You retain ownership of any custom artwork, drawings, waypoint sets, and route designs (&ldquo;User Content&rdquo;) you create,
+            upload, or save within the Service. By saving User Content to your account, you grant SkyArt Studio a limited, non-exclusive
+            license to store, process, and transmit that User Content solely as needed to operate, sync, and display the Service to you.
+        </p>
+        <p class="small mb-1">You agree not to use the Service to:</p>
+        <ul class="small mb-0">
+            <li>Create, upload, or transmit unlawful, defamatory, harassing, malicious, or infringing material.</li>
+            <li>Plan, promote, or carry out unsafe, unauthorized, or unlawful aircraft or airspace operations.</li>
+            <li>Scrape, crawl, flood, reverse-engineer for abuse, or attempt to bypass authentication, rate limits, or server protections.</li>
+            <li>Interfere with the availability, integrity, or security of the Service or other users&rsquo; data.</li>
+        </ul>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5 fw-bold mb-2">5. Data, Logging &amp; Privacy Summary</h2>
+        <p class="small mb-2">
+            When you use SkyArt Studio, the Service stores only the information reasonably necessary to provide functionality and protect
+            platform security:
+        </p>
+        <ul class="small mb-2">
+            <li><strong>Account &amp; Profile Data:</strong> Your email address, salted cryptographic password hash (scrypt), terms acceptance timestamp/version, and any optional Pilot Profile fields or default home airport you configure.</li>
+            <li><strong>Saved Drawings &amp; Feedback:</strong> Custom route coordinates you choose to save, and feedback messages or optional flight-plan diagnostics you submit.</li>
+            <li><strong>Technical Server Logs:</strong> Standard operational and security access logs (such as IP address, timestamps, request paths, HTTP status codes, and authentication/export events) used for abuse prevention, rate limiting, and troubleshooting.</li>
+            <li><strong>Local Client Processing:</strong> Uploaded images and tracing overlays are processed and traced locally within your browser to generate artwork contours rather than being permanently hosted on the server as image galleries.</li>
+        </ul>
+        <p class="small mb-0">
+            We do not sell your personal information or email address to third parties. For full details on cookies, local
+            storage, third-party services, and requesting account or data deletion, please review our
+            <a href="/privacy" class="fw-semibold text-primary text-decoration-none open-privacy-trigger">Privacy Policy</a>.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5 fw-bold mb-2">6. Third-Party Services &amp; Map Data</h2>
+        <p class="small mb-0">
+            The Service relies on external datasets and third-party services, including map tile providers (such as OpenStreetMap), public
+            airport reference data, web fonts (such as Google Fonts), and client-side compatibility formats for third-party navigation
+            software (such as ForeFlight, Garmin <code>.fpl</code>, GPX, and KML). Third-party map tiles, airport frequencies/coordinates,
+            and external links are provided by independent sources without any guarantee of accuracy, completeness, currency, or continued
+            availability.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5 fw-bold mb-2">7. Disclaimer of Warranties (&ldquo;AS IS&rdquo;)</h2>
+        <p class="small mb-0">
+            THE SERVICE AND ALL GENERATED WAYPOINTS, ESTIMATES, EXPORTS, AND MAP OVERLAYS ARE PROVIDED ON AN &ldquo;AS IS&rdquo; AND
+            &ldquo;AS AVAILABLE&rdquo; BASIS WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION
+            IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, ACCURACY, NON-INFRINGEMENT, OR UNINTERRUPTED
+            AVAILABILITY. SKYART STUDIO DOES NOT WARRANT THAT GENERATED FLIGHT PLANS ARE ACCURATE, FLYABLE, FREE OF HAZARDS, OR
+            COMPATIBLE WITH ANY SPECIFIC AVIONICS OR EFB SOFTWARE.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5 fw-bold mb-2">8. Limitation of Liability</h2>
+        <p class="small mb-0">
+            TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL SKYART STUDIO OR ITS OPERATORS, CONTRIBUTORS, OR
+            AFFILIATES BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES &mdash;
+            INCLUDING WITHOUT LIMITATION PROPERTY DAMAGE, AIRCRAFT DAMAGE, PERSONAL INJURY, LOSS OF LIFE, AIRSPACE VIOLATIONS, REGULATORY
+            ENFORCEMENT, FUEL EXHAUSTION, OR LOSS OF DATA &mdash; ARISING OUT OF OR IN CONNECTION WITH YOUR ACCESS TO, RELIANCE ON, OR
+            USE OF THE SERVICE OR ANY GENERATED FLIGHT PLAN OR EXPORTED FILE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5 fw-bold mb-2">9. Indemnification</h2>
+        <p class="small mb-0">
+            You agree to defend, indemnify, and hold harmless SkyArt Studio and its operators from and against any claims, liabilities,
+            damages, losses, and expenses (including reasonable legal fees) arising out of or relating to your use of the Service, your
+            User Content, any flight or operation conducted using routes generated by the Service, or your violation of these Terms or
+            applicable aviation laws and regulations.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5 fw-bold mb-2">10. Changes to the Service &amp; Terms; Termination</h2>
+        <p class="small mb-0">
+            SkyArt Studio may modify, suspend, or discontinue any part of the Service, or update these Terms from time to time. When
+            material changes are made, the version number and &ldquo;Last Updated&rdquo; date above will be revised. Continued use of
+            the Service after updated Terms take effect constitutes acceptance of the revised Terms. We also reserve the right to suspend
+            or terminate accounts that violate these Terms or threaten system security.
+        </p>
+    </section>
+
+    <section class="mb-0">
+        <h2 class="h5 fw-bold mb-2">11. Contact</h2>
+        <p class="small mb-0">
+            Questions or concerns regarding these Terms of Service or the operation of SkyArt Studio may be sent via email to
+            <a href="mailto:vans.rv7.pilot@gmail.com?subject=SkyArt%20Terms%20of%20Service" class="fw-semibold text-primary text-decoration-none">vans.rv7.pilot@gmail.com</a>
+            or through the in-app Feedback tab in the User Guide.
+        </p>
+    </section>
+</div>

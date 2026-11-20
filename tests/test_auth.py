@@ -38,11 +38,12 @@ class SkyArtAuthTestCase(unittest.TestCase):
     # --- Registration Tests ---
 
     def test_registration_success(self):
-        """Registering with a valid email and strong password must succeed and create a session."""
+        """Registering with a valid email, strong password, and Terms acceptance must succeed and create a session."""
         payload = {
             "email": "pilot1@example.com",
             "password": "ValidPassword123!",
-            "rememberMe": True
+            "rememberMe": True,
+            "termsAccepted": True
         }
         res = self.client.post("/api/auth/register", json=payload)
         self.assertEqual(res.status_code, 201)
@@ -50,6 +51,8 @@ class SkyArtAuthTestCase(unittest.TestCase):
         self.assertEqual(data.get("status"), "success")
         self.assertIn("user", data)
         self.assertEqual(data["user"]["email"], "pilot1@example.com")
+        self.assertIsNotNone(data["user"].get("termsAcceptedAt"))
+        self.assertEqual(data["user"].get("termsVersion"), "1.0")
 
         # Verify current user session via /api/auth/me
         me_res = self.client.get("/api/auth/me")
@@ -58,12 +61,43 @@ class SkyArtAuthTestCase(unittest.TestCase):
         self.assertTrue(me_data.get("authenticated"))
         self.assertEqual(me_data["user"]["email"], "pilot1@example.com")
 
+    def test_registration_requires_terms_acceptance(self):
+        """Registration must fail without explicit Terms of Service acceptance and succeed with it."""
+        # 1. Missing termsAccepted
+        res_missing = self.client.post("/api/auth/register", json={
+            "email": "noterms1@example.com",
+            "password": "ValidPassword123!"
+        })
+        self.assertEqual(res_missing.status_code, 400)
+        self.assertIn("Terms of Service", res_missing.get_json().get("message", ""))
+
+        # 2. termsAccepted explicitly False
+        res_false = self.client.post("/api/auth/register", json={
+            "email": "noterms2@example.com",
+            "password": "ValidPassword123!",
+            "termsAccepted": False
+        })
+        self.assertEqual(res_false.status_code, 400)
+        self.assertIn("Terms of Service", res_false.get_json().get("message", ""))
+
+        # 3. termsAccepted explicitly True succeeds and records timestamp & version
+        res_ok = self.client.post("/api/auth/register", json={
+            "email": "acceptedterms@example.com",
+            "password": "ValidPassword123!",
+            "termsAccepted": True
+        })
+        self.assertEqual(res_ok.status_code, 201)
+        user_data = res_ok.get_json()["user"]
+        self.assertIsNotNone(user_data.get("termsAcceptedAt"))
+        self.assertEqual(user_data.get("termsVersion"), "1.0")
+
     def test_registration_invalid_email(self):
         """Malformed emails must be rejected with 400 Bad Request."""
         for bad_email in ["notanemail", "pilot@", "pilot@domain", "@domain.com", ""]:
             res = self.client.post("/api/auth/register", json={
                 "email": bad_email,
-                "password": "ValidPassword123!"
+                "password": "ValidPassword123!",
+                "termsAccepted": True
             })
             self.assertEqual(res.status_code, 400, f"Expected 400 for bad email: {bad_email}")
 
@@ -79,7 +113,8 @@ class SkyArtAuthTestCase(unittest.TestCase):
         for pw, reason in weak_passwords:
             res = self.client.post("/api/auth/register", json={
                 "email": f"test_{reason.replace(' ', '_')}@example.com",
-                "password": pw
+                "password": pw,
+                "termsAccepted": True
             })
             self.assertEqual(res.status_code, 400, f"Expected 400 for {reason}: {pw}")
 
@@ -87,7 +122,8 @@ class SkyArtAuthTestCase(unittest.TestCase):
         """Attempting to register with an already existing email must return 409 Conflict."""
         payload = {
             "email": "duplicate@example.com",
-            "password": "Password123!"
+            "password": "Password123!",
+            "termsAccepted": True
         }
         res1 = self.client.post("/api/auth/register", json=payload)
         self.assertEqual(res1.status_code, 201)
@@ -105,7 +141,8 @@ class SkyArtAuthTestCase(unittest.TestCase):
         reg_payload = {
             "email": "rv7pilot@example.com",
             "password": "SuperSecretPass99#",
-            "rememberMe": True
+            "rememberMe": True,
+            "termsAccepted": True
         }
         self.client.post("/api/auth/register", json=reg_payload)
 
@@ -135,7 +172,8 @@ class SkyArtAuthTestCase(unittest.TestCase):
         """Login with wrong password must return 401 Unauthorized."""
         self.client.post("/api/auth/register", json={
             "email": "wrongpass@example.com",
-            "password": "CorrectPassword123$"
+            "password": "CorrectPassword123$",
+            "termsAccepted": True
         })
         self.client.post("/api/auth/logout")
 
@@ -172,7 +210,8 @@ class SkyArtAuthTestCase(unittest.TestCase):
         # User A registers & creates a drawing
         self.client.post("/api/auth/register", json={
             "email": "userA@example.com",
-            "password": "PasswordUserA1!"
+            "password": "PasswordUserA1!",
+            "termsAccepted": True
         })
         draw_res = self.client.post("/api/sky_art/drawings", json={
             "id": "art_user_a_1",
@@ -192,7 +231,8 @@ class SkyArtAuthTestCase(unittest.TestCase):
         # User B registers
         self.client.post("/api/auth/register", json={
             "email": "userB@example.com",
-            "password": "PasswordUserB2!"
+            "password": "PasswordUserB2!",
+            "termsAccepted": True
         })
 
         # User B sees 0 drawings
@@ -209,7 +249,8 @@ class SkyArtAuthTestCase(unittest.TestCase):
         """Anonymous or local browser drawings migrate cleanly into newly authenticated user account."""
         self.client.post("/api/auth/register", json={
             "email": "migrator@example.com",
-            "password": "MigratePassword1!"
+            "password": "MigratePassword1!",
+            "termsAccepted": True
         })
 
         local_drawings = [
@@ -273,7 +314,8 @@ class SkyArtAuthTestCase(unittest.TestCase):
         """Authenticated user can save optional pilot profile and retrieve it."""
         self.client.post("/api/auth/register", json={
             "email": "profilepilot@example.com",
-            "password": "StrongPassword123!"
+            "password": "StrongPassword123!",
+            "termsAccepted": True
         })
 
         profile_payload = {
@@ -312,7 +354,8 @@ class SkyArtAuthTestCase(unittest.TestCase):
         """Setting home airport in profile automatically synchronizes user's home airport."""
         self.client.post("/api/auth/register", json={
             "email": "syncpilot@example.com",
-            "password": "StrongPassword123!"
+            "password": "StrongPassword123!",
+            "termsAccepted": True
         })
 
         self.client.post("/api/user/profile", json={
@@ -332,7 +375,8 @@ class SkyArtAuthTestCase(unittest.TestCase):
         """Logged-out user can request a 6-digit code via email and reset their password."""
         self.client.post("/api/auth/register", json={
             "email": "forgotpilot@example.com",
-            "password": "OldPassword123!"
+            "password": "OldPassword123!",
+            "termsAccepted": True
         })
         self.client.post("/api/auth/logout")
 
@@ -375,7 +419,8 @@ class SkyArtAuthTestCase(unittest.TestCase):
         """Logged-in user requires correct current password + email code to change password."""
         self.client.post("/api/auth/register", json={
             "email": "loggedin@example.com",
-            "password": "InitialPass123!"
+            "password": "InitialPass123!",
+            "termsAccepted": True
         })
 
         # Request code (uses current session user)
@@ -405,7 +450,8 @@ class SkyArtAuthTestCase(unittest.TestCase):
         """Submitting 5 incorrect codes invalidates the token."""
         self.client.post("/api/auth/register", json={
             "email": "bruteforce@example.com",
-            "password": "SecurePassword123!"
+            "password": "SecurePassword123!",
+            "termsAccepted": True
         })
         self.client.post("/api/auth/logout")
 
@@ -444,7 +490,8 @@ class SkyArtAuthTestCase(unittest.TestCase):
         """Weak new passwords must be rejected."""
         self.client.post("/api/auth/register", json={
             "email": "complex@example.com",
-            "password": "InitialPassword123!"
+            "password": "InitialPassword123!",
+            "termsAccepted": True
         })
         req_res = self.client.post("/api/auth/password-reset/request", json={
             "email": "complex@example.com"
